@@ -222,6 +222,19 @@ function readProcessCommand(pid) {
   }
 }
 
+/**
+ * A redacting client drops the tool body and reports only its size. Keep a marker so the
+ * dashboard can still tell "finished" from "still running" — absence of result_json is
+ * what drives that badge.
+ */
+function resultField(payload) {
+  if (payload.result !== undefined && payload.result !== null) return payload.result;
+  if (payload.output_chars !== undefined) {
+    return JSON.stringify({ redacted: true, output_chars: Number(payload.output_chars) || 0 });
+  }
+  return null;
+}
+
 function sessionIdentityFromPayload(payload, fallbackKind = null) {
   const sessionId = String(payload?.session_id || payload?.subagent_id || '');
   const inferredOrcaPane = sessionId.startsWith('orca:') ? sessionId.slice('orca:'.length) : null;
@@ -445,7 +458,7 @@ function handleTelemetryEvent(db, hub, event) {
         id: payload.call_id,
         session_id: payload.session_id,
         tool_name: payload.tool_name,
-        result: payload.result,
+        result: resultField(payload),
         is_error: payload.is_error ? 1 : 0,
         duration_ms: payload.duration_ms || 0
       };

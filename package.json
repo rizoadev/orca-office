@@ -14,7 +14,8 @@
     "test": "node tools/test-e2e.js",
     "backfill:usage": "node tools/backfill-usage.js",
     "simulate": "node tools/simulate-pi-session.js",
-    "sync:extension": "node tools/build-global-extension.js",
+    "bundle:extension": "node tools/build-global-extension.js",
+    "sync:extension": "node tools/build-global-extension.js --install",
     "test:extension": "node tools/test-global-extension.js",
     "pi:office": "pi -e extension/index.ts"
   },

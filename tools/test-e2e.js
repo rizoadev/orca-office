@@ -101,6 +101,18 @@ server.listen(PORT, '127.0.0.1', async () => {
     await postEvent(PORT, toolResultPayload);
     console.log('✅ 5. Tool call & result terkirim');
 
+    // 5b. Klien remote meredaksi body tool dan hanya mengirim output_chars. Feed harus
+    // tetap bisa membedakan "selesai" dari "masih berjalan" tanpa isi hasilnya.
+    await postEvent(PORT, { type: 'tool.call', payload: { call_id: 'tc_redacted', session_id: 'sesi_test_001', tool_name: 'bash', input: { command: 'cat .env', _omitted: ['content'] } } });
+    await postEvent(PORT, { type: 'tool.result', payload: { call_id: 'tc_redacted', session_id: 'sesi_test_001', tool_name: 'bash', output_chars: 4096, is_error: false, duration_ms: 5 } });
+    await sleep(200);
+    const redactedTc = db.getRecentToolCalls(10).find((x) => x.id === 'tc_redacted');
+    if (!redactedTc?.result_json || !redactedTc.result_json.includes('redacted')) {
+      throw new Error(`tool.result terredaksi tidak ditandai selesai: ${JSON.stringify(redactedTc)}`);
+    }
+    if (!redactedTc.result_json.includes('4096')) throw new Error('output_chars tidak tersimpan');
+    console.log('✅ 5b. Result terredaksi tetap terbaca "selesai" + output_chars tersimpan');
+
     // 6. Verifikasi WebSocket Broadcast
     await sleep(300);
     const eventTypes = wsReceived.map(e => e.type);
@@ -171,7 +183,7 @@ server.listen(PORT, '127.0.0.1', async () => {
     }
     console.log('✅ 9. dedupe_key menahan replay backfill (token tidak berlipat)');
 
-    console.log('\n🎉 [HASIL] SEMUA 9 PENGUJIAN E2E BERHASIL!');
+    console.log('\n🎉 [HASIL] SEMUA 10 PENGUJIAN E2E BERHASIL!');
     ws.close();
     hub.close();
     server.close(() => process.exit(0));

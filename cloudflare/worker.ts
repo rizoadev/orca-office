@@ -82,6 +82,18 @@ function projectNameFromCwd(cwd: string | null): string | null {
   return name?.endsWith('.git') ? name.slice(0, -4) : name;
 }
 
+/**
+ * Redacting clients drop the tool body and report only its size. Persist a marker so the
+ * dashboard can still distinguish "finished" from "still running".
+ */
+function resultField(payload: Record<string, any>): unknown {
+  if (payload.result !== undefined && payload.result !== null) return payload.result;
+  if (payload.output_chars !== undefined) {
+    return JSON.stringify({ redacted: true, output_chars: Number(payload.output_chars) || 0 });
+  }
+  return null;
+}
+
 function sessionIdentityFromPayload(payload: Record<string, any>, fallbackKind: string | null = null) {
   const sessionId = String(payload.session_id || payload.subagent_id || '');
   const inferredOrcaPane = sessionId.startsWith('orca:') ? sessionId.slice('orca:'.length) : null;
@@ -96,10 +108,79 @@ function sessionIdentityFromPayload(payload: Record<string, any>, fallbackKind: 
   };
 }
 
-function requiresAuth(env: Env, request: Request): boolean {
-  if (!env.OFFICE_TOKEN) return false;
+const SESSION_COOKIE = 'office_session';
+const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function readCookie(request: Request, name: string): string | null {
+  const header = request.headers.get('cookie');
+  if (!header) return null;
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq !== -1 && part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+  }
+  return null;
+}
+
+/**
+ * A reader is allowed with the bearer token (extensions, scripts) or a session cookie
+ * (browser). The cookie stores sha256(token), not the token itself, so a stolen cookie
+ * cannot be replayed as an Authorization header against the ingest endpoint.
+ */
+async function isAuthorized(request: Request, env: Env): Promise<boolean> {
+  if (!env.OFFICE_TOKEN) return true;
   const header = request.headers.get('authorization') || '';
-  return header !== `Bearer ${env.OFFICE_TOKEN}`;
+  if (header === `Bearer ${env.OFFICE_TOKEN}`) return true;
+  const cookie = readCookie(request, SESSION_COOKIE);
+  return cookie !== null && cookie === (await sha256Hex(env.OFFICE_TOKEN));
+}
+
+function gatewayPage(message?: string): Response {
+  const notice = message ? `<p class="err">${message.replace(/[<>&]/g, '')}</p>` : '';
+  return new Response(
+    `<!doctype html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ORCA24 · akses kantor</title>
+<style>
+ body{font:15px/1.5 ui-sans-serif,system-ui,sans-serif;background:#0a0d13;color:#e2e8f0;display:grid;place-items:center;min-height:100vh;margin:0}
+ form{background:#121722;border:1px solid #1f2a40;border-radius:14px;padding:26px;width:min(92vw,360px)}
+ h1{font-size:17px;margin:0 0 4px}p.sub{color:#64748b;font-size:13px;margin:0 0 18px}
+ input{width:100%;box-sizing:border-box;background:#0a0d13;border:1px solid #232e44;color:#e2e8f0;border-radius:9px;padding:10px 12px;font-family:ui-monospace,monospace}
+ button{margin-top:14px;width:100%;background:#38bdf8;border:0;color:#04121c;font-weight:700;padding:10px;border-radius:9px;cursor:pointer}
+ .err{color:#fda4af;font-size:13px;margin:0 0 12px}
+</style></head><body>
+<form method="post" action="/gateway">${notice}
+<h1>☕ ORCA24 Coworking</h1>
+<p class="sub">Kantor ini berisi sesi dari beberapa mesin. Masukkan token untuk masuk.</p>
+<input type="password" name="token" placeholder="OFFICE_TOKEN" autofocus autocomplete="off">
+<button>Masuk</button>
+</form></body></html>`,
+    { status: message ? 401 : 200, headers: { 'content-type': 'text/html; charset=utf-8' } }
+  );
+}
+
+async function handleGateway(request: Request, env: Env): Promise<Response> {
+  if (!env.OFFICE_TOKEN) {
+    return new Response(null, { status: 302, headers: { location: '/' } });
+  }
+  let provided: string | null = new URL(request.url).searchParams.get('token');
+  if (!provided && request.method === 'POST') {
+    provided = (await request.formData()).get('token')?.toString() ?? null;
+  }
+  if (!provided) return gatewayPage();
+  if (provided !== env.OFFICE_TOKEN) return gatewayPage('Token tidak cocok.');
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: '/',
+      'set-cookie': `${SESSION_COOKIE}=${await sha256Hex(env.OFFICE_TOKEN)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE}`,
+    },
+  });
 }
 
 async function ensureSchema(env: Env): Promise<void> {
@@ -509,7 +590,7 @@ async function handleTelemetryEvent(env: Env, event: TelemetryEvent): Promise<un
       return tc;
     }
     case 'tool.result': {
-      const tc = await recordToolCall(client, { id: payload.call_id, session_id: payload.session_id, tool_name: payload.tool_name, result: payload.result, is_error: payload.is_error ? 1 : 0, duration_ms: payload.duration_ms || 0 });
+      const tc = await recordToolCall(client, { id: payload.call_id, session_id: payload.session_id, tool_name: payload.tool_name, result: resultField(payload), is_error: payload.is_error ? 1 : 0, duration_ms: payload.duration_ms || 0 });
       await broadcast(env, 'tool_completed', tc);
       return tc;
     }
@@ -585,7 +666,14 @@ export default {
 
     const url = new URL(request.url);
 
+    if (url.pathname === '/gateway') {
+      return handleGateway(request, env);
+    }
+
     if (url.pathname === '/ws') {
+      // Why: the socket carries the same live feed as /api/state, so it cannot stay open
+      // while the REST reads are gated.
+      if (!(await isAuthorized(request, env))) return json({ error: 'Unauthorized' }, 401);
       const id = env.OFFICE_ROOM.idFromName('global');
       return env.OFFICE_ROOM.get(id).fetch(new Request('https://office-room.internal/ws', request));
     }
@@ -598,6 +686,10 @@ export default {
         if (request.method === 'GET' && url.pathname === '/api/health') {
           return json({ status: 'ok', target: 'cloudflare-worker', time: now() });
         }
+        // Everything past this point returns office contents, not just liveness.
+        if (!(await isAuthorized(request, env))) {
+          return json({ error: 'Unauthorized', hint: 'buka /gateway untuk masuk dengan token' }, 401);
+        }
         if (request.method === 'GET' && url.pathname === '/api/state') {
           return json(await getFullState(client));
         }
@@ -605,7 +697,6 @@ export default {
           return json(await getBilling(client));
         }
         if (request.method === 'POST' && url.pathname === '/api/event') {
-          if (requiresAuth(env, request)) return json({ error: 'Unauthorized' }, 401);
           const event = (await request.json()) as TelemetryEvent;
           const result = await handleTelemetryEvent(env, event);
           return json({ received: true, type: event.type, result });

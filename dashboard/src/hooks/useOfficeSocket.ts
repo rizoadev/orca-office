@@ -24,7 +24,14 @@ export function useOfficeSocket() {
   // Initial HTTP Fetch
   const fetchInitialState = useCallback(async () => {
     try {
+      // Cookie is same-origin, so the browser sends it without an explicit credentials mode.
       const res = await fetch(officeApiUrl('/api/state'));
+      // A shared hub gates its reads; send the browser to the token page instead of
+      // rendering an empty office that looks like nobody is working.
+      if (res.status === 401 && !officeApiUrl('/api/state').startsWith('http://127.0.0.1')) {
+        window.location.assign('/gateway');
+        return;
+      }
       if (res.ok) {
         const data: OfficeState = await res.json();
         setState(data);
