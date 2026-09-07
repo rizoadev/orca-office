@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { AccessGate } from './components/AccessGate';
 import { Topbar } from './components/Topbar';
 import { StageContainer } from './components/Stage/StageContainer';
 import { Sidebar } from './components/Sidebar/Sidebar';
@@ -11,7 +12,7 @@ import { assignDrinks, formatPerMillion, formatTokens } from './lib/coffee-menu'
 import { officeApiUrl } from './lib/office-endpoints';
 
 export function App() {
-  const { state: wsState, isConnected, refetch } = useOfficeSocket();
+  const { state: wsState, isConnected, unauthorized, submitToken, refetch } = useOfficeSocket();
 
   const [engine, setEngine] = useState<OfficeEngine | null>(null);
   const [agents, setAgents] = useState<AgentData[]>([]);
@@ -68,7 +69,9 @@ export function App() {
       eng.stop();
       engineRef.current = null;
     };
-  }, [addToast]);
+    // unauthorized ikut: canvas baru ada di DOM setelah gate lolos, dan effect ini harus
+    // sempat jalan lagi — deps lama tidak berubah, jadi engine tidak akan pernah start.
+  }, [addToast, unauthorized]);
 
   // Sync real Pi sessions from WebSocket into 3D engine.
   useEffect(() => {
@@ -213,6 +216,15 @@ export function App() {
   const walkingCount = agents.filter((a) => a.mode === 'to' || a.mode === 'back' || a.mode === 'leaving').length;
   const idleCount = agents.filter((a) => ['idle', 'break_play', 'break_out'].includes(a.mode)).length;
   const doneCount = agents.reduce((sum, a) => sum + (a.done || 0), 0);
+
+  if (unauthorized) {
+    return (
+      <>
+        <AccessGate onSubmit={submitToken} />
+        <ToastContainer toasts={toasts} />
+      </>
+    );
+  }
 
   return (
     <>

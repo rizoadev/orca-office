@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { officeApiUrl, officeWsUrl } from '../lib/office-endpoints';
+import { isLoopbackHub, officeApiUrl, officeWsUrl } from '../lib/office-endpoints';
 import { OfficeState, Session, ToolCall, LogEntry, LlmStreamState } from '../types';
 
 const EMPTY_BILLING: OfficeState['billing'] = {
@@ -8,6 +8,8 @@ const EMPTY_BILLING: OfficeState['billing'] = {
   menu: [],
   totals: { totalTokens: 0, cost: 0, turns: 0, users: 0, models: 0 }
 };
+
+const RECONNECT_MS = 2000;
 
 export function useOfficeSocket() {
   const [state, setState] = useState<OfficeState>({
@@ -18,36 +20,61 @@ export function useOfficeSocket() {
     stats: { total_active: 0, timestamp: Date.now() }
   });
   const [isConnected, setIsConnected] = useState<boolean>(false);
+  // A shared hub gates its reads. This is rendered as an inline prompt instead of a
+  // navigation: auto-redirecting from a data fetch races the host app's own reload
+  // logic (Orca's webview re-arms src on every probe) and flickers forever.
+  const [unauthorized, setUnauthorized] = useState<boolean>(false);
   const [lastPing, setLastPing] = useState<number>(Date.now());
   const wsRef = useRef<WebSocket | null>(null);
+  const lockedRef = useRef<boolean>(false);
+  const connectRef = useRef<(() => void) | null>(null);
 
-  // Initial HTTP Fetch
-  const fetchInitialState = useCallback(async () => {
+  // Initial HTTP Fetch. Returns false when the hub refused to answer.
+  const fetchInitialState = useCallback(async (): Promise<boolean> => {
     try {
-      // Cookie is same-origin, so the browser sends it without an explicit credentials mode.
       const res = await fetch(officeApiUrl('/api/state'));
-      // A shared hub gates its reads; send the browser to the token page instead of
-      // rendering an empty office that looks like nobody is working.
-      if (res.status === 401 && !officeApiUrl('/api/state').startsWith('http://127.0.0.1')) {
-        window.location.assign('/gateway');
-        return;
-      }
+      const locked = res.status === 401 && !isLoopbackHub();
+      lockedRef.current = locked;
+      setUnauthorized(locked);
       if (res.ok) {
         const data: OfficeState = await res.json();
         setState(data);
       }
+      return !locked;
     } catch {
-      // Backend maybe starting up
+      // Backend maybe starting up — keep whatever lock state we already know.
+      return !lockedRef.current;
     }
   }, []);
 
-  useEffect(() => {
-    fetchInitialState();
+  const submitToken = useCallback(
+    async (token: string): Promise<boolean> => {
+      try {
+        await fetch(officeApiUrl('/gateway'), {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ token }),
+          // The gateway answers 302 on success; following it would load the SPA into the
+          // fetch response for no reason.
+          redirect: 'manual'
+        });
+      } catch {
+        // Offline hub — the state probe below decides.
+      }
+      const authorized = await fetchInitialState();
+      if (authorized) connectRef.current?.();
+      return authorized;
+    },
+    [fetchInitialState]
+  );
 
+  useEffect(() => {
     let isMounted = true;
     let reconnectTimeout: ReturnType<typeof setTimeout>;
+    let closed = false;
 
     function connect() {
+      if (closed || lockedRef.current) return;
       const ws = new WebSocket(officeWsUrl());
       wsRef.current = ws;
 
@@ -55,7 +82,7 @@ export function useOfficeSocket() {
         if (!isMounted) return;
         setIsConnected(true);
         setLastPing(Date.now());
-        fetchInitialState();
+        void fetchInitialState();
       };
 
       ws.onmessage = (event) => {
@@ -152,10 +179,14 @@ export function useOfficeSocket() {
         }
       };
 
+      // A refused socket is a lock, not a blip — retrying every 2 s would just hammer the
+      // gateway until the user supplies a token.
       ws.onclose = () => {
         if (!isMounted) return;
         setIsConnected(false);
-        reconnectTimeout = setTimeout(connect, 2000);
+        if (!lockedRef.current) {
+          reconnectTimeout = setTimeout(connect, RECONNECT_MS);
+        }
       };
 
       ws.onerror = () => {
@@ -163,14 +194,27 @@ export function useOfficeSocket() {
       };
     }
 
-    connect();
+    connectRef.current = connect;
+
+    void fetchInitialState().then((authorized) => {
+      if (authorized) connect();
+    });
 
     return () => {
+      closed = true;
       isMounted = false;
+      connectRef.current = null;
       clearTimeout(reconnectTimeout);
       if (wsRef.current) wsRef.current.close();
     };
   }, [fetchInitialState]);
 
-  return { state, isConnected, lastPing, refetch: fetchInitialState };
+  return {
+    state,
+    isConnected,
+    lastPing,
+    unauthorized,
+    submitToken,
+    refetch: fetchInitialState
+  };
 }

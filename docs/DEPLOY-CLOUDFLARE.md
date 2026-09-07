@@ -83,6 +83,39 @@ Frontend memakai same-origin `/api` dan `/ws`, jadi konfigurasi klien hanya butu
 | Static dashboard | dari disk | dari assets binding |
 | WebSocket | `ws://:4317/ws` | Durable Object room (WS lewat `/ws`) |
 
+## Autentikasi & cookie gateway
+
+| Endpoint | Tanpa token | Dengan bearer | Dengan cookie | Notes |
+|---|---|---|---|---|
+| `GET /api/health` | ✅ | — | — | publik, untuk Orca proks |
+| `GET /api/state` | 401 | ✅ | ✅ | 
+| `GET /api/billing` | 401 | ✅ | ✅ | 
+| `POST /api/event` | 401 | ✅ | — | hanya extension (bearer) |
+| `GET /ws` | 401 | ✅ | ✅ | 
+| `GET /gateway` | 200 | — | — | halaman form HTML |
+| `POST /gateway` | token salah: 401 | — | — | token benar: set cookie + 302 |
+
+### Cara kerja
+
+1. Semua pembacaan (`GET /api/*`, `GET /ws`) dicek `isAuthorized()` — header `Authorization` dulu, lalu cookie `session`.
+2. Cookie `session = sha256(OFFICE_TOKEN)`, HttpOnly + Secure + SameSite=Lax, 30 hari.
+3. Browser memanggil `GET /gateway?token=...` (atau POST dengan field `token`) untuk mendapatkan cookie.
+4. Worker menyet cookie lalu redirect 302 ke `/`.
+5. Dashboard frontend tidak melakukan redirect otomatis (anti flicker): bila 401, React menampilkan panel `AccessGate` (inline) yang menanyakan token.
+
+### Loopback (localhost/127.0.0.1) **bebas autentikasi** — ini khusus untuk sesi Pi di mesin yang sama.
+- Non-loopback (cloud, LAN) memerlukan cookie atau bearer.
+
+## Keamanan: redaksi payload (client)
+
+Extension Pi (`extension/redact.ts`) secara aktif meredaksi payload sebelum mengirim ke non-loopback:
+
+- Secret: JWT, API keys, tokens, passwords — dihapus total
+- Input tool: hanya key yang di-allowlist per tool (bash → `command,timeout`; read → `path,offset,limit`; write/edit → `path`). Result body dihapus, hanya `output_chars` disimpan.
+- `sanitizeCommand()`: meredaksi `KEY=value` tokens (semua vendor) secara struktural, bukan regex yang mudah lolos.
+
+Loopback (127.0.0.1) = full detail, Non-loopback (cloud/LAN) = saniter. WF approval browser perlu persetujuan manual jika diperlukan.
+
 ## Keamanan & batasan
 
 - Harga & feed di mode cloud bergantung pada data yang dikirim extension (`reported`); tidak ada `pricing.json` lokal di Worker.

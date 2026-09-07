@@ -76,6 +76,18 @@ Tema coffee-shop menyusup sampai billing:
 - `BillingPanel` menampilkan "menu board" harga per 1M token + total per guest.
 - `sample.html` (root repo, juga di-serve dari dist) adalah versi simulasi mandiri dari office 3D untuk demo tanpa backend.
 
+## Akses & gateway (klien non-loopback)
+
+Ketika `OFFICE_TOKEN` diatur di Worker cloud, endpoint baca (`/api/state`, `/api/billing`, `/ws`) hanya menjawab klien yang menyertakan `Authorization: Bearer <token>` **atau** cookie sesi yang valid.
+
+Klien yang mendapat 401 tidak akan di-redirect ke `/gateway`. Sebagai gantinya, React menampilkan panel `AccessGate` (inline) yang menanyakan token. Token diposting ke `/gateway` via POST; Worker menyet cookie SHA-256 `HttpOnly` + `Secure` + `SameSite=Lax` lalu menjawab `302 → /`. Cookie berlaku 30 hari.
+
+Desain ini menghindari flicker tak berujung: dashboard Orca embedding men-reload via webview secara berkala; navigasi otomatis dari dalam `fetchInitialState` menjejalkan race condition yang menyebabkan kedip tanpa henti.
+
+- `/gateway` = halaman form HTML, bukan SPA. Menerima POST dengan `Content-Type: application/x-www-form-urlencoded`, field `token`.
+- Cookie dibaca oleh `GET /api/state`, `GET /api/billing`, `GET /ws` — pengecekan dilakukan via header `Authorization` dulu, baru `Cookie: session=<hash>`.
+- `/api/health` tetap publik — tidak perlu autentikasi.
+
 ## Kontrol pengguna
 
 - Pilih agent (klik bubble atau roster) → `SelectedCard` menampilkan detail + **Kill** (`POST /api/sessions/:id/kill`).

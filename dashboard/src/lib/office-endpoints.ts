@@ -9,6 +9,16 @@ export function officeApiUrl(path: string): string {
   return `${localApiOrigin()}${normalized}`;
 }
 
+/**
+ * Loopback hub = mesin ini, tidak pernah meng-gate pembacaan. Perbandingan harus pakai
+ * hostname, bukan URL hasil officeApiUrl(): untuk same-origin fungsi itu mengembalikan
+ * path relatif ('/api/state') sehingga pengecekan prefix apa pun selalu gagal.
+ */
+export function isLoopbackHub(): boolean {
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
 export function officeWsUrl(): string {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const { hostname, port } = window.location;
