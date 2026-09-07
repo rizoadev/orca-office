@@ -1,0 +1,124 @@
+# graph-planner v1
+task: "Kantor Pi Dev CLI — Ekstensi Pi Sesi Indonesia, Backend Realtime SQLite + WebSocket, dan Dashboard Vite Modular"
+system:
+  context: "Platform observability kantor virtual untuk Pi Dev CLI: setiap sesi Pi dan sub-agent terdaftar dengan nama Indonesia dan tugas aktif, dipush realtime via SQLite + WebSocket ke frontend modular Vite."
+  stack:
+    - component: "pi-extension"
+      tech: "TypeScript / Pi Extension API (Event Hooks + Tools)"
+    - component: "backend"
+      tech: "Node.js + node:sqlite + ws (WebSocket) + Native HTTP"
+    - component: "frontend"
+      tech: "Vite + React + Lucide Icons + Three.js"
+    - component: "concern"
+      tech: "Realtime Telemetry & In-Memory/SQLite Event Log"
+
+nodes:
+  - id: "A"
+    name: "Backend Server (SQLite + WebSocket Hub)"
+    role: "generation"
+    goal: "Menyediakan server port 4317 dengan SQLite persistence dan WebSocket broadcaster untuk telemetry sesi, sub-agent, dan tool calls."
+    deliverables:
+      - "server/src/db.js: skema SQLite (sessions, agents, tool_calls, logs, tasks)"
+      - "server/src/ws.js: broadcaster WebSocket client hub"
+      - "server/src/server.js: HTTP POST /api/event, GET /api/state, GET /api/health"
+      - "server/src/index.js: orchestrator bootstrap server"
+    constraints:
+      - "Gunakan node:sqlite bawaan Node 22+ / Node 26"
+      - "Port default 4317 dengan fail-soft jika port dipakai"
+      - "Fire-and-forget payload handling agar tidak memblokir Pi CLI"
+    depends_on: []
+
+  - id: "B"
+    name: "Pi Dev CLI Extension (pi-office)"
+    role: "generation"
+    goal: "Ekstensi TypeScript untuk Pi CLI yang otomatis mendaftarkan sesi dengan persona nama Indonesia, memantau tugas, mendeteksi spawn sub-agent, dan mengirimkan tool call secara realtime."
+    deliverables:
+      - ".pi/extensions/pi-office/index.ts: event listener session_start, tool_call, tool_result, agent_end"
+      - ".pi/extensions/pi-office/indonesian-names.ts: generator nama & role Indonesia representatif"
+      - ".pi/extensions/pi-office/client.ts: HTTP dispatcher async dengan retry minimal"
+      - "Tools LLM tambahan: office_set_task, office_announce untuk kontrol eksplisit oleh agen"
+    constraints:
+      - "Kompatibel dengan loader Pi (@earendil-works/pi-coding-agent)"
+      - "Deteksi sub-agent via tool_call(toolName === 'subagent') dan auto-register tim baru"
+      - "Non-blocking: kegagalan koneksi server tidak boleh menghentikan proses coding Pi"
+    depends_on: ["A"]
+
+  - id: "C"
+    name: "Dashboard Vite Modular (React + Realtime UI)"
+    role: "generation"
+    goal: "Dashboard interaktif modular berbasis Vite + React untuk visualisasi denah kantor 3D/2D, daftar tim aktif, stream realtime logs, dan telemetry tool calls."
+    deliverables:
+      - "dashboard/package.json & vite.config.ts"
+      - "dashboard/src/components/OfficeView.tsx: representasi visual kantor 3D/2.5D terhubung WS"
+      - "dashboard/src/components/TeamRoster.tsx: kartu tim dengan nama Indonesia & task aktif"
+      - "dashboard/src/components/RealtimeLogs.tsx: log feed terminal auto-scroll"
+      - "dashboard/src/components/ToolCallsFeed.tsx: stream eksekusi tool Pi (bash, read, subagent)"
+      - "dashboard/src/hooks/useOfficeSocket.ts: hook koneksi WebSocket dengan auto-reconnect"
+    constraints:
+      - "Komponen modular dan responsif"
+      - "Integrasikan visualisasi 3D dari sample.html secara native atau hybrid"
+      - "State reactive yang langsung terupdate tiap ada packet WS"
+    depends_on: ["A"]
+
+  - id: "D"
+    name: "Bridge & Live Integration sample.html"
+    role: "generation"
+    goal: "Menyambungkan file sample.html yang sudah ada ke WebSocket server sehingga coffee shop 3D langsung menampilkan agen Pi sungguhan secara visual."
+    deliverables:
+      - "sample.html patch/adaptor: koneksi WebSocket ke ws://localhost:4317/ws"
+      - "Mapping posisi kursi otomatis untuk agen Pi yang aktif"
+      - "Bubble chat dan walking animation terpicu saat tool call / subagent spawn terjadi"
+    constraints:
+      - "sample.html tetap dapat berjalan standalone jika server offline"
+      - "Preserve visual 1 lantai dan bubble transparan yang sudah bagus"
+    depends_on: ["A", "B"]
+
+  - id: "E"
+    name: "Telemetry & Verification Suite"
+    role: "concern"
+    goal: "Menyediakan simulator test event, CLI verifikasi, dan health monitor untuk membuktikan integrasi end-to-end tanpa menunggu sesi Pi eksternal."
+    deliverables:
+      - "tools/simulate-pi-session.js: simulasi sesi Pi dengan nama Indonesia + subagent spawn"
+      - "tools/test-e2e.js: verifikasi otomatis REST, SQLite query, dan pesan WebSocket"
+    constraints:
+      - "Harus dapat dijalankan tanpa dependensi eksternal rumit"
+    depends_on: ["A", "B", "C", "D"]
+
+edges:
+  - id: "E1"
+    between: ["A", "B"]
+    type: "contract"
+    check: "Skema JSON payload HTTP POST /api/event di server sama persis dengan yang dikirim oleh pi-office extension"
+    verify: "Bandingkan interface telemetry event di extension dengan event handler di server"
+
+  - id: "E2"
+    between: ["A", "C"]
+    type: "contract"
+    check: "Format pesan WebSocket (state_snapshot, session_update, tool_call, log_entry) cocok dengan parsing useOfficeSocket di frontend"
+    verify: "Cek handler onmessage di frontend terhadap broadcast payload di server ws.js"
+
+  - id: "E3"
+    between: ["A", "D"]
+    type: "integration"
+    check: "sample.html menerima update agen dan menggerakkan bubble/karakter sesuai event Pi nyata"
+    verify: "Kirim simulasi tool_call via server dan verifikasi bubble karakter di sample.html terupdate"
+
+  - id: "E4"
+    between: ["B", "E"]
+    type: "consistency"
+    check: "Event format yang dihasilkan simulator sama dengan event yang dihasilkan pi-office extension sesungguhnya"
+    verify: "Jalankan test-e2e.js membandingkan payload asli extension vs simulator"
+
+aggregation:
+  goal: "Sistem observability kantor virtual terpadu: Pi dev CLI terintegrasi penuh ke backend SQLite/WebSocket dan tersaji realtime di Vite frontend modular serta 3D coffee shop."
+  must_include:
+    - "Ringkasan arsitektur alur data dari Pi CLI ke Browser"
+    - "Daftar file yang dibangun beserta perannya"
+    - "Hasil pengujian E2E dan status port/services"
+    - "Instruksi cara menjalankan server, extension, dan dashboard"
+  output_order: ["A", "B", "C", "D", "E"]
+
+execution:
+  order: ["A", "B", "C", "D", "E"]
+  parallel_safe: [["B", "C"]]
+  after_each_edge: "stop and fix mismatch before proceeding"

@@ -1,0 +1,29 @@
+{
+  "name": "pi-office",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ORCA24 Coworking Space — Observabilitas Realtime Sesi Indonesia & Sub-Agents",
+  "scripts": {
+    "dev": "node tools/run-dev.js",
+    "server": "node server/src/index.js",
+    "dashboard": "cd dashboard && npm run dev",
+    "build": "cd dashboard && npm run build",
+    "cf:dev": "npm run build && wrangler dev",
+    "cf:deploy": "npm run build && wrangler deploy",
+    "test": "node tools/test-e2e.js",
+    "backfill:usage": "node tools/backfill-usage.js",
+    "simulate": "node tools/simulate-pi-session.js",
+    "sync:extension": "node tools/build-global-extension.js",
+    "test:extension": "node tools/test-global-extension.js",
+    "pi:office": "pi -e extension/index.ts"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260907.1",
+    "wrangler": "^4.129.0"
+  }
+}

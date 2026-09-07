@@ -1,0 +1,24 @@
+name = "pi-office"
+account_id = "6557db3b08ffd4a61ecfbb38e49ba379"
+main = "cloudflare/worker.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "dashboard/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[durable_objects.bindings]]
+name = "OFFICE_ROOM"
+class_name = "OfficeRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["OfficeRoom"]
+
+# Set these as secrets, never commit real values:
+#   wrangler secret put TURSO_DATABASE_URL
+#   wrangler secret put TURSO_AUTH_TOKEN
+# Optional telemetry auth:
+#   wrangler secret put OFFICE_TOKEN

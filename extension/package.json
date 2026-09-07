@@ -1,0 +1,11 @@
+{
+  "name": "pi-office-extension",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Ekstensi ORCA24 — registrasi sesi persona Indonesia, deteksi sub-agent, dan telemetry realtime",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

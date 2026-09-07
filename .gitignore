@@ -1,0 +1,38 @@
+# ── Runtime state (jangan pernah commit) ──────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.pid
+*.log
+
+# Secret & kredensial — real values hidup di sini, repo hanya bawa contoh
+cloud.env
+.env
+.env.*
+!.env.example
+
+# pricing.json bisa berisi tabel harga pribadi operator; pricing-cache.json
+# adalah cache feed pihak ketiga. Keduanya regenerable.
+pricing.json
+pricing-cache.json
+
+# Identity mesin & konfigurasi lokal dengan token
+machine-id
+config.json
+orca.json
+
+# Backup otomatis saat sync:extension menimpa file global lama
+.backup/
+*.bak-*
+
+# ── Dependencies ───────────────────────────────────────────────────────
+node_modules/
+.wrangler/
+
+# ── Build output ───────────────────────────────────────────────────────
+dashboard/dist/
+
+# ── OS / editor noise ──────────────────────────────────────────────────
+.DS_Store
+*.swp
+*~
