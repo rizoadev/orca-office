@@ -167,7 +167,8 @@ async function handleGateway(request: Request, env: Env): Promise<Response> {
   if (!env.OFFICE_TOKEN) {
     return new Response(null, { status: 302, headers: { location: '/' } });
   }
-  let provided: string | null = new URL(request.url).searchParams.get('token');
+  const params = new URL(request.url).searchParams;
+  let provided: string | null = params.get('token') ?? params.get('auth');
   if (!provided && request.method === 'POST') {
     provided = (await request.formData()).get('token')?.toString() ?? null;
   }
