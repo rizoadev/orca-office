@@ -37,6 +37,19 @@ export function App() {
     }, 3000);
   }, []);
 
+  // Akses cepat: ?auth= / ?token= di URL langsung dipakai untuk login otomatis saat
+  // dashboard ke-load, lalu dihapus dari address bar supaya token tidak teringgal.
+  // Dashboard di-serve sebagai static asset (edge) untuk path '/', jadi worker tidak
+  // sempat menangkap query — auto-login di sisi klien inilah yang menangani link cepat.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const quick = params.get('auth') ?? params.get('token');
+    if (!quick) return;
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState(null, '', cleanUrl);
+    void submitToken(quick);
+  }, [submitToken]);
+
   // Initialize Three.js Engine once canvas mounts
   useEffect(() => {
     const canvas = document.getElementById('shop') as HTMLCanvasElement;

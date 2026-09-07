@@ -32,7 +32,7 @@ export function useOfficeSocket() {
   // Initial HTTP Fetch. Returns false when the hub refused to answer.
   const fetchInitialState = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch(officeApiUrl('/api/state'));
+      const res = await fetch(officeApiUrl('/api/state'), { credentials: 'include' });
       const locked = res.status === 401 && !isLoopbackHub();
       lockedRef.current = locked;
       setUnauthorized(locked);
@@ -55,7 +55,8 @@ export function useOfficeSocket() {
           headers: { 'content-type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({ token }),
           // The gateway answers 302 on success; following it would load the SPA into the
-          // fetch response for no reason.
+          // fetch response for no reason. Send credentials so the Set-Cookie is stored.
+          credentials: 'include',
           redirect: 'manual'
         });
       } catch {
