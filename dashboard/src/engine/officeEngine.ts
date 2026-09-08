@@ -523,6 +523,94 @@ export class OfficeEngine {
     this.scene.add(barLight);
   }
 
+  // ── Dinding kanan: full window ber-frame (mirror dari kiri) ──────────────────
+  buildRightWindowWall() {
+    const X = 10.1;
+    const Z0 = -7.7;
+    const DEPTH = 16;
+    const HEIGHT = 5.4;
+    const ZC = Z0 + DEPTH / 2;
+
+    const mat = (c: number, r = 0.8, m = 0.05) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+    const frameM = mat(0x1b1611, 0.45, 0.55);
+    const box = (w: number, h: number, d: number, material: THREE.Material, x: number, y: number, z: number) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      return mesh;
+    };
+
+    // Bukaan kaca: floor-to-ceiling mirror dari sisi kiri.
+    box(0.26, 0.18, DEPTH, mat(0x2a2118, 0.7), X, 0.09, ZC);
+    box(0.3, 0.26, DEPTH, mat(0x2a2118, 0.7), X, HEIGHT - 0.13, ZC);
+    box(0.3, HEIGHT, 0.3, frameM, X, HEIGHT / 2, Z0 + 0.15);
+    box(0.3, HEIGHT, 0.3, frameM, X, HEIGHT / 2, Z0 + DEPTH - 0.15);
+
+    // Vertical mullions
+    const BAY = 2.0;
+    for (let i = 0; i <= DEPTH / BAY; i++) {
+      box(0.15, HEIGHT - 0.4, 0.11, frameM, X - 0.02, HEIGHT / 2, Z0 + i * BAY);
+    }
+    // Horizontal mullions
+    [1.8, 3.6].forEach((y) => {
+      box(0.11, 0.09, DEPTH, frameM, X - 0.02, y, ZC);
+    });
+
+    // Ambang dalam
+    box(0.34, 0.06, DEPTH, mat(0x6b4a2b, 0.6), X - 0.24, 0.2, ZC);
+
+    // Glass pane
+    const glass = new THREE.Mesh(
+      new THREE.PlaneGeometry(DEPTH - 0.2, HEIGHT - 0.4),
+      new THREE.MeshStandardMaterial({
+        color: 0xcfe9ff,
+        transparent: true,
+        opacity: 0.13,
+        roughness: 0.06,
+        metalness: 0.15,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    glass.rotation.y = Math.PI / 2;
+    glass.position.set(X - 0.05, HEIGHT / 2, ZC);
+    this.scene.add(glass);
+
+    // Outdoor terrace (gap 3m ke Office Annex)
+    const terrace = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.4, DEPTH + 2),
+      mat(0xbfae94, 0.85)
+    );
+    terrace.rotation.x = -Math.PI / 2;
+    terrace.position.set(12.2, 0.02, ZC);
+    terrace.receiveShadow = true;
+    this.scene.add(terrace);
+
+    // Semak di luar (sisi kanan, menghadap Office Annex gap)
+    const shrubM = mat(0x3f5a33, 0.9);
+    [[12.4, -5.6], [13.1, -1.2], [12.6, 3.4], [13.4, 6.6]].forEach(([x, z], i) => {
+      const r = 0.7 + (i % 2) * 0.35;
+      const shrub = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), shrubM);
+      shrub.position.set(x, r * 0.75, z);
+      this.scene.add(shrub);
+    });
+
+    // Pot kecil di ambang jendela kanan
+    const potM = mat(0x8a4f2c, 0.8);
+    [-6.8, -6.1, 4.6, 6.4].forEach((z, i) => {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.16, 12), potM);
+      pot.position.set(X - 0.24, 0.31, z);
+      pot.castShadow = true;
+      this.scene.add(pot);
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.13 + (i % 2) * 0.04, 10, 8), mat(0x4c7a3f, 0.85));
+      leaf.position.set(X - 0.24, 0.5, z);
+      leaf.castShadow = true;
+      this.scene.add(leaf);
+    });
+  }
+
   // ── Berkas moonlight lembut (volumetrik palsu) + debu melayang ───────────────
   initSunShafts() {
     // Harus sama dengan arah lowSun di initLights — kalau tidak, berkas cahaya dan
@@ -945,7 +1033,8 @@ export class OfficeEngine {
 
     // Dinding kiri: full window ber-frame supaya cahaya sore masuk ke ruangan.
     this.buildWindowWall();
-    box(0.4, 5.4, 16, wallM, 10.1, 2.7, 0.3);
+    // Dinding kanan: full window juga (mirror dari kiri), menghadap gap 3m ke Office Annex.
+    this.buildRightWindowWall();
     // box(22, 0.5, 0.4, wallM, 0, 5.1, 7.6); // removed top horizontal beam
 
     // Meja panjang + bar stool menempel dinding kaca, lalu berkas sinarnya.
