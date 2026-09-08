@@ -6,6 +6,7 @@ import { AcMode, createWallAcUnit, WallAcUnit } from './wall-ac';
 import { createMusholaMezzanine, MEZZ_DECK_Y, Mezzanine } from './mushola-mezzanine';
 import { createStreetFront, StreetFront } from './street-front';
 import { createIndomaret } from './indomaret';
+import { createOfficeAnnex } from './office-annex';
 
 // Kursi kantor coffee shop (14 spots). `bar: true` = duduk di stool meja panjang
 // jendela kiri (kursi biasa dilewati), `topY` = tinggi permukaan mejanya.
@@ -50,44 +51,110 @@ export function paintSignBoard(
   g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, w - g.lineWidth, h - g.lineWidth);
 }
 
-// Lanskap luar untuk dinding kaca: sengaja digambar dengan MeshBasicMaterial supaya
-// tidak ikut gelap oleh lampu dalam — langit yang terang adalah sumber "cahaya" ruangan.
+// Lanskap luar untuk dinding kaca. MeshBasicMaterial membuat lukisan malam ini tetap
+// terbaca di balik kaca, tapi paletnya sengaja redup agar tidak silau.
 export function paintSkyBackdrop(g: CanvasRenderingContext2D, w: number, h: number) {
   const sky = g.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, '#5f9fd4');
-  sky.addColorStop(0.45, '#a9d3ee');
-  sky.addColorStop(0.72, '#ffe7bd');
-  sky.addColorStop(1, '#f6e3c3');
+  sky.addColorStop(0, '#030817');
+  sky.addColorStop(0.45, '#0b1a31');
+  sky.addColorStop(0.72, '#17283a');
+  sky.addColorStop(1, '#1d2419');
   g.fillStyle = sky;
   g.fillRect(0, 0, w, h);
 
-  const sunX = w * 0.24;
-  const sunY = h * 0.34;
-  const glow = g.createRadialGradient(sunX, sunY, 8, sunX, sunY, h * 0.55);
-  glow.addColorStop(0, 'rgba(255,250,232,0.78)');
-  glow.addColorStop(0.25, 'rgba(255,226,160,0.34)');
-  glow.addColorStop(1, 'rgba(255,226,160,0)');
-  g.fillStyle = glow;
+  const moonX = w * 0.78;
+  const moonY = h * 0.2;
+  const moonGlow = g.createRadialGradient(moonX, moonY, 8, moonX, moonY, h * 0.45);
+  moonGlow.addColorStop(0, 'rgba(226,238,255,0.58)');
+  moonGlow.addColorStop(0.14, 'rgba(164,190,230,0.22)');
+  moonGlow.addColorStop(1, 'rgba(72,95,140,0)');
+  g.fillStyle = moonGlow;
   g.fillRect(0, 0, w, h);
+  g.fillStyle = '#dbeafe';
+  g.beginPath();
+  g.arc(moonX, moonY, h * 0.035, 0, Math.PI * 2);
+  g.fill();
 
-  // Kota jauh (kabut biru) + pohon di garis cakrawala.
-  g.fillStyle = 'rgba(150,178,205,0.55)';
-  for (let i = 0; i < 14; i++) {
-    const bw = 26 + ((i * 37) % 60);
-    const bh = 40 + ((i * 53) % 130);
-    g.fillRect((i * w) / 14, h * 0.72 - bh, bw, bh);
-  }
-  g.fillStyle = 'rgba(74,107,60,0.85)';
-  for (let i = 0; i < 22; i++) {
-    const cx = (i * w) / 22 + 12;
-    const r = 22 + ((i * 17) % 26);
+  g.fillStyle = 'rgba(220,235,255,0.74)';
+  for (let i = 0; i < 95; i++) {
+    const x = (i * 131 + 17) % w;
+    const y = (i * 47 + 23) % Math.floor(h * 0.52);
+    const r = 0.7 + ((i * 7) % 12) / 10;
+    g.globalAlpha = 0.22 + ((i * 19) % 55) / 100;
     g.beginPath();
-    g.arc(cx, h * 0.74, r, 0, Math.PI * 2);
+    g.arc(x, y, r, 0, Math.PI * 2);
     g.fill();
   }
+  g.globalAlpha = 1;
 
-  g.fillStyle = '#e3d3b6';
-  g.fillRect(0, h * 0.76, w, h * 0.24);
+  const horizon = h * 0.67;
+  const drawMountain = (cx: number, baseY: number, width: number, height: number, color: string, rim: string) => {
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(cx - width * 0.56, baseY);
+    g.lineTo(cx - width * 0.24, baseY - height * 0.56);
+    g.lineTo(cx - width * 0.06, baseY - height * 0.42);
+    g.lineTo(cx + width * 0.08, baseY - height);
+    g.lineTo(cx + width * 0.31, baseY - height * 0.5);
+    g.lineTo(cx + width * 0.56, baseY);
+    g.closePath();
+    g.fill();
+
+    g.strokeStyle = rim;
+    g.lineWidth = Math.max(2, h * 0.005);
+    g.beginPath();
+    g.moveTo(cx - width * 0.52, baseY);
+    g.lineTo(cx + width * 0.08, baseY - height);
+    g.lineTo(cx + width * 0.54, baseY);
+    g.stroke();
+  };
+
+  // Dua gunung jauh di belakang sabana — lebih gelap, dengan rim moonlight agar tidak blank.
+  drawMountain(w * 0.34, horizon + h * 0.035, w * 0.47, h * 0.36, '#16283a', 'rgba(146,177,214,0.28)');
+  drawMountain(w * 0.72, horizon + h * 0.04, w * 0.52, h * 0.42, '#112434', 'rgba(151,184,220,0.3)');
+
+  const savanna = g.createLinearGradient(0, horizon, 0, h);
+  savanna.addColorStop(0, '#29351f');
+  savanna.addColorStop(0.5, '#3b351b');
+  savanna.addColorStop(1, '#241a0e');
+  g.fillStyle = savanna;
+  g.fillRect(0, horizon, w, h - horizon);
+
+  // Lapisan rumput sabana yang rendah dan kontrasnya lembut supaya malam tetap kebaca.
+  g.strokeStyle = 'rgba(166,145,72,0.26)';
+  g.lineWidth = Math.max(1.4, h * 0.004);
+  for (let i = 0; i < 6; i++) {
+    const y = horizon + h * (0.04 + i * 0.052);
+    g.beginPath();
+    g.moveTo(0, y);
+    for (let x = 0; x <= w; x += w / 12) {
+      g.lineTo(x, y + Math.sin(i * 1.7 + x * 0.014) * h * 0.012);
+    }
+    g.stroke();
+  }
+
+  g.strokeStyle = 'rgba(189,163,84,0.33)';
+  g.lineWidth = 1;
+  for (let i = 0; i < 85; i++) {
+    const x = (i * 73) % w;
+    const y = horizon + h * 0.08 + ((i * 41) % Math.floor(h * 0.24));
+    const blade = 7 + ((i * 17) % 18);
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + ((i % 3) - 1) * 3, y - blade);
+    g.stroke();
+  }
+
+  // Siluet akasia malam sebagai aksen sabana.
+  g.fillStyle = 'rgba(13,24,13,0.78)';
+  [0.12, 0.53, 0.88].forEach((p, i) => {
+    const x = w * p;
+    const y = horizon + h * (0.035 + (i % 2) * 0.025);
+    g.fillRect(x - 2, y - h * 0.1, 4, h * 0.1);
+    g.beginPath();
+    g.ellipse(x, y - h * 0.1, w * 0.045, h * 0.03, 0, 0, Math.PI * 2);
+    g.fill();
+  });
 }
 
 // Menu hiasan sebelum ada satu pun sesi Pi menyeduh token.
@@ -183,11 +250,11 @@ export class OfficeEngine {
     this.overlay = overlay;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b0d12);
-    this.scene.fog = new THREE.FogExp2(0x0b0d12, 0.022);
+    this.scene.background = new THREE.Color(0x030817);
+    this.scene.fog = new THREE.FogExp2(0x08111f, 0.011);
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 150);
-    this.camera.position.set(0, 13, 17);
+    this.camera.position.set(0, 15, 20);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -200,8 +267,8 @@ export class OfficeEngine {
     this.controls.dampingFactor = 0.06;
     this.controls.maxPolarAngle = Math.PI / 2.12;
     this.controls.minDistance = 6;
-    this.controls.maxDistance = 42;
-    this.controls.target.set(0, 1, 0.5);
+    this.controls.maxDistance = 52;
+    this.controls.target.set(0, 1, 2);
 
     this.initLights();
     this.initOfficeEnvironment();
@@ -228,32 +295,32 @@ export class OfficeEngine {
   }
 
   initLights() {
-    // Cahaya jendela sengaja ditahan di bawah "siang bolong": ruangan tetap hangat
-    // tapi tidak memutih, dan shadow pass kedua tidak mendominasi fill rate.
-    this.scene.add(new THREE.AmbientLight(0x9a8d7a, 0.68));
-    const hemi = new THREE.HemisphereLight(0xfff1d6, 0x241a12, 0.62);
+    // Vibes malam: interior tetap hangat dari lampu coffeeshop, sementara cahaya luar
+    // hanya moonlight lembut agar jendela sabana tidak berubah jadi bidang silau.
+    this.scene.add(new THREE.AmbientLight(0x6d6470, 0.44));
+    const hemi = new THREE.HemisphereLight(0x8ea7d8, 0x1b120d, 0.38);
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xffdfb0, 1.0);
+    const sun = new THREE.DirectionalLight(0x9fb8ff, 0.32);
     sun.position.set(9, 16, 9);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -14;
-    sun.shadow.camera.right = 14;
-    sun.shadow.camera.top = 14;
+    sun.shadow.camera.left = -34;
+    sun.shadow.camera.right = 34;
+    sun.shadow.camera.top = 18;
     sun.shadow.camera.bottom = -14;
     this.scene.add(sun);
 
-    // Matahari sore miring dari jendela kiri. Arahnya (0.78, -0.46, 0.44): turun
-    // menyilang ruangan, jadi kusen jatuh sebagai garis diagonal di lantai.
-    const lowSun = new THREE.DirectionalLight(0xffd9a0, 1.45);
+    // Moonlight miring dari jendela kiri. Arahnya tetap sama agar bayangan kusen
+    // masih terbaca, tapi intensitasnya jauh lebih rendah dari mode siang.
+    const lowSun = new THREE.DirectionalLight(0x8fb3ff, 0.36);
     lowSun.position.set(-14, 9.5, -7);
     lowSun.target.position.set(2, 0, 2);
     lowSun.castShadow = true;
     lowSun.shadow.mapSize.set(2048, 2048);
     const lc = lowSun.shadow.camera;
-    lc.left = -18;
-    lc.right = 18;
+    lc.left = -34;
+    lc.right = 34;
     lc.top = 18;
     lc.bottom = -18;
     lc.near = 0.5;
@@ -263,8 +330,8 @@ export class OfficeEngine {
     lowSun.shadow.normalBias = 0.02;
     this.scene.add(lowSun, lowSun.target);
 
-    // Pantulan hangat dari lantai/jendela supaya sisi kiri tidak jadi gelap total.
-    const bounce = new THREE.PointLight(0xffe2b8, 0.7, 16, 2);
+    // Pantulan hangat dari interior supaya sisi kiri tidak jadi gelap total.
+    const bounce = new THREE.PointLight(0xffc58f, 0.45, 16, 2);
     bounce.position.set(-7.4, 1.6, 1.2);
     this.scene.add(bounce);
 
@@ -341,16 +408,6 @@ export class OfficeEngine {
     glass.rotation.y = Math.PI / 2;
     glass.position.set(X + 0.05, HEIGHT / 2, ZC);
     this.scene.add(glass);
-
-    // Langit luar digambar MeshBasicMaterial: tidak kena pencahayaan dalam, jadi tetap
-    // terlihat silau seperti matahari beneran di balik kaca.
-    const sky = new THREE.Mesh(
-      new THREE.PlaneGeometry(30, 16),
-      new THREE.MeshBasicMaterial({ map: this.createSignTex(1024, 540, paintSkyBackdrop), side: THREE.DoubleSide })
-    );
-    sky.rotation.y = Math.PI / 2;
-    sky.position.set(-14.5, 5.2, ZC);
-    this.scene.add(sky);
 
     const terrace = new THREE.Mesh(
       new THREE.PlaneGeometry(4.4, DEPTH + 2),
@@ -466,7 +523,7 @@ export class OfficeEngine {
     this.scene.add(barLight);
   }
 
-  // ── Berkas cahaya matahari (volumetrik palsu) + debu melayang ────────────────
+  // ── Berkas moonlight lembut (volumetrik palsu) + debu melayang ───────────────
   initSunShafts() {
     // Harus sama dengan arah lowSun di initLights — kalau tidak, berkas cahaya dan
     // bayangan kusen saling bertentangan dan otaknya langsung protes.
@@ -476,9 +533,9 @@ export class OfficeEngine {
 
     const fade = this.createCanvasTex(8, 128, (g, w, h) => {
       const grad = g.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, 'rgba(255,236,200,0.95)');
-      grad.addColorStop(0.55, 'rgba(255,220,160,0.42)');
-      grad.addColorStop(1, 'rgba(255,210,140,0)');
+      grad.addColorStop(0, 'rgba(169,196,255,0.5)');
+      grad.addColorStop(0.55, 'rgba(102,133,205,0.18)');
+      grad.addColorStop(1, 'rgba(58,79,132,0)');
       g.fillStyle = grad;
       g.fillRect(0, 0, w, h);
     });
@@ -512,9 +569,9 @@ export class OfficeEngine {
         quad(topL, topR, botR, botL),
         new THREE.MeshBasicMaterial({
           map: fade,
-          color: 0xffd9a0,
+          color: 0x8fb3ff,
           transparent: true,
-          opacity: 0.22,
+          opacity: 0.065,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
           side: THREE.DoubleSide,
@@ -522,7 +579,7 @@ export class OfficeEngine {
       );
       shaft.renderOrder = 3;
       this.scene.add(shaft);
-      this.sunShafts.push({ m: shaft.material as THREE.MeshBasicMaterial, base: 0.22, ph: Math.random() * 9 });
+      this.sunShafts.push({ m: shaft.material as THREE.MeshBasicMaterial, base: 0.065, ph: Math.random() * 9 });
 
       // Genangan cahaya di lantai: belah ketupat dari ujung berkas sepanjang meja bar.
       const p0 = botL.clone().addScaledVector(flat, -0.15);
@@ -532,9 +589,9 @@ export class OfficeEngine {
       const pool = new THREE.Mesh(
         quad(p0, p1, p2, p3),
         new THREE.MeshBasicMaterial({
-          color: 0xffca7a,
+          color: 0x7da2ff,
           transparent: true,
-          opacity: 0.14,
+          opacity: 0.045,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
           side: THREE.DoubleSide,
@@ -543,7 +600,7 @@ export class OfficeEngine {
       pool.rotation.x = 0;
       pool.renderOrder = 2;
       this.scene.add(pool);
-      this.sunPools.push({ m: pool.material as THREE.MeshBasicMaterial, base: 0.14, ph: Math.random() * 9 });
+      this.sunPools.push({ m: pool.material as THREE.MeshBasicMaterial, base: 0.045, ph: Math.random() * 9 });
     });
 
     // Debu dalam berkas: 24 titik per bay, digerakkan sepanjang `dir` tiap frame.
@@ -559,10 +616,10 @@ export class OfficeEngine {
     const pts = new THREE.Points(
       geo,
       new THREE.PointsMaterial({
-        color: 0xffe6bd,
-        size: 0.035,
+        color: 0xa9c4ff,
+        size: 0.03,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.18,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         sizeAttenuation: true,
@@ -870,6 +927,22 @@ export class OfficeEngine {
     // Walls
     const wallM = M(0x241a12, 0.9);
     box(22, 5.4, 0.4, wallM, 0, 2.7, -6.9);
+
+    // Latar sabana malam ditempel di dinding belakang coffeeshop, bukan di jendela kiri.
+    // Posisi z sedikit di depan muka dinding (-6.7) tetapi tetap di belakang furniture
+    // dan AC, supaya terbaca sebagai background ruangan dari kamera utama.
+    const rearBackdrop = new THREE.Mesh(
+      new THREE.PlaneGeometry(21.2, 5.05),
+      new THREE.MeshBasicMaterial({
+        map: this.createSignTex(1400, 540, paintSkyBackdrop),
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    rearBackdrop.position.set(0, 2.78, -6.665);
+    rearBackdrop.renderOrder = -1;
+    this.scene.add(rearBackdrop);
+
     // Dinding kiri: full window ber-frame supaya cahaya sore masuk ke ruangan.
     this.buildWindowWall();
     box(0.4, 5.4, 16, wallM, 10.1, 2.7, 0.3);
@@ -1801,7 +1874,10 @@ export class OfficeEngine {
   initStreetFront() {
     this.streetFront = createStreetFront();
     this.scene.add(this.streetFront.group);
+    // Unit kiri: Indomaret
     this.scene.add(createIndomaret().group);
+    // Unit kanan: Office Annex (modern glass-walled office)
+    this.scene.add(createOfficeAnnex().group);
   }
 
   setAcMode(mode: AcMode) {

@@ -27,8 +27,8 @@ const WALK_Z1 = 12.2;
 const CURB_Z1 = 12.6;
 const ROAD_Z1 = 27.0;
 
-const WALK_X = 13.5; // trotoar sedikit lebih lebar dari bangunan (x ±11)
-const ROAD_X = 34;
+const WALK_X = 38; // trotoar lebar menutupi 3 unit ruko + gap (x ±33)
+const ROAD_X = 55;
 
 const WALK_TOP_Y = 0.02;
 const CURB_TOP_Y = 0.03;
@@ -200,7 +200,7 @@ export function createStreetFront(): StreetFront {
 
   // Nat ekspansi tiap ~3 m: garis gelap tipis, bukan geometri baru.
   const joint = new THREE.MeshBasicMaterial({ color: 0x5f594f, transparent: true, opacity: 0.5 });
-  for (let x = -12; x <= 12; x += 3) {
+  for (let x = -36; x <= 36; x += 3) {
     group.add(face(0.05, walkDepth, joint, x, WALK_TOP_Y + 0.006, walkCenterZ));
   }
 
