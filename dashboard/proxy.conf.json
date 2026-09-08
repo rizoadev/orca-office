@@ -1,0 +1,15 @@
+{
+  "/api": {
+    "target": "http://localhost:4317",
+    "secure": false
+  },
+  "/ws": {
+    "target": "ws://localhost:4317",
+    "secure": false,
+    "ws": true
+  },
+  "/gateway": {
+    "target": "http://localhost:4317",
+    "secure": false
+  }
+}
