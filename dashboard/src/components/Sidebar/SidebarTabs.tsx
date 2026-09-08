@@ -1,8 +1,8 @@
 import React from 'react';
 
 interface SidebarTabsProps {
-  activeTab: 'team' | 'tasks' | 'tools' | 'feed' | 'logs' | 'bill';
-  onSetTab: (tab: 'team' | 'tasks' | 'tools' | 'feed' | 'logs' | 'bill') => void;
+  activeTab: 'team' | 'locations' | 'tasks' | 'tools' | 'feed' | 'logs' | 'bill';
+  onSetTab: (tab: 'team' | 'locations' | 'tasks' | 'tools' | 'feed' | 'logs' | 'bill') => void;
   feedKind: 'all' | 'task' | 'tool' | 'chat' | 'move';
   onSetFeedKind: (kind: 'all' | 'task' | 'tool' | 'chat' | 'move') => void;
 }
@@ -21,6 +21,13 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
           onClick={() => onSetTab('team')}
         >
           Team
+        </button>
+        <button
+          className={activeTab === 'locations' ? 'active' : ''}
+          onClick={() => onSetTab('locations')}
+          title="Group agent by device / laptop"
+        >
+          📍 Locs
         </button>
         <button
           className={activeTab === 'tasks' ? 'active' : ''}

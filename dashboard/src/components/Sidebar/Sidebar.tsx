@@ -4,6 +4,7 @@ import { FloorStats } from './FloorStats';
 import { SelectedCard } from './SelectedCard';
 import { SidebarTabs } from './SidebarTabs';
 import { TeamList } from './TeamList';
+import { LocationsList } from './LocationsList';
 import { TasksList } from './TasksList';
 import { ToolsList } from './ToolsList';
 import { FeedList } from './FeedList';
@@ -36,7 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   billing,
   stats,
 }) => {
-  const [tab, setTab] = useState<'team' | 'tasks' | 'tools' | 'feed' | 'logs' | 'bill'>('team');
+  const [tab, setTab] = useState<'team' | 'locations' | 'tasks' | 'tools' | 'feed' | 'logs' | 'bill'>('team');
   const [feedKind, setFeedKind] = useState<'all' | 'task' | 'tool' | 'chat' | 'move'>('all');
   const [query, setQuery] = useState('');
 
@@ -76,6 +77,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="pane">
+        {tab === 'locations' && (
+          <LocationsList
+            agents={agents}
+            selectedId={selectedId}
+            onSelectAgent={onSelectAgent}
+            query={query}
+          />
+        )}
         {tab === 'team' && (
           <TeamList
             agents={agents}

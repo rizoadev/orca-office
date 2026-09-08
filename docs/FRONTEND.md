@@ -30,6 +30,7 @@ dashboard/src/
     ├── Sidebar/
     │   ├── Sidebar.tsx / SidebarTabs.tsx
     │   ├── TeamList.tsx        # Roster tim (persona Indonesia)
+    │   ├── LocationsList.tsx   # Roster di-group per device / laptop
     │   ├── TasksList.tsx / ToolsList.tsx / FeedList.tsx
     │   ├── SelectedCard.tsx    # Detail agent terpilih + tombol Kill
     │   ├── BillingPanel.tsx    # Tagihan coffee-shop per guest & per brew
