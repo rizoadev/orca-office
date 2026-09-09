@@ -5,7 +5,7 @@
 // Sends machine identity, and redacts tool payloads whenever the hub is not loopback.
 // Install on another machine: pi install npm:pi-office
 
-export const OFFICE_EXTENSION_VERSION = '1.2.0';
+export const OFFICE_EXTENSION_VERSION = '1.2.1';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';

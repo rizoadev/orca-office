@@ -25,7 +25,9 @@ extension/                 ← sumber modular (repo ini)
 ### Mesin lain (rekomendasi): satu baris dari npm
 
 ```bash
-pi install npm:pi-office      # pasang extension (satu file, nol dependency)
+pi install git:github.com/rizoadev/pi-office   # pasang extension (satu file, nol dependency)
+# `pi install npm:pi-office` setara dan akan menyusul: isinya identik, tapi registry npm
+# menolak terbit sampai akun punya 2FA aktif atau granular token dengan bypass-2FA.
 pi                                     # buka sesi pi apa pun
 /office connect <token-kantor>         # satu kali per mesin
 ```

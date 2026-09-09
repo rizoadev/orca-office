@@ -7,7 +7,9 @@ tugas aktif, feed tool-call realtime, stream respons LLM, dan tagihan token per 
 ## Pasang
 
 ```bash
-pi install npm:pi-office
+# jalur TERUJI hari ini (paket git, tanpa kredensial npm):
+pi install git:github.com/rizoadev/pi-office
+pi install git:github.com/rizoadev/pi-office@v1.2.1   # pin versi
 ```
 
 Selesai. Semua sesi `pi` di mesin itu sekarang otomatis terdaftar ke kantor — di laptop mana pun,
