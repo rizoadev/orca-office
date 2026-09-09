@@ -1,6 +1,7 @@
+import assert from 'node:assert/strict';
 import http from 'node:http';
 import { WebSocket } from 'ws';
-import { createOfficeServer } from '../server/src/server.js';
+import { createOfficeServer, enforceTelemetryPolicy } from '../server/src/server.js';
 import fs from 'node:fs';
 
 // DB test lewat driver yang sama dengan produksi: libSQL `file:` (bukan node:sqlite),
@@ -226,7 +227,45 @@ server.listen(PORT, '127.0.0.1', async () => {
       console.log('✅ 10b. tanpa machine-id reaper tidak menebak (fail-closed)');
     }
 
-    console.log('\n🎉 [HASIL] SEMUA 11 PENGUJIAN E2E BERHASIL!');
+    // 11. Pagar di sisi pencilan: keputusan sensor diambil dari TEMPAT DATA DIDARAT,
+    //     bukan dari alamat hub. Dua keadaan diuji di jalur asli:
+    const rawEvent = {
+      type: 'tool.call',
+      payload: { call_id: 'tc_sink_guard', session_id: 'sesi_test_001', tool_name: 'bash',
+        input: { command: 'cd /home/rizoa/PROJECTS/office && grep -rn OFFICE_TOKEN .env', hidden: 'x' } }
+    };
+
+    // (a) storage remote → command mentah dipangkas sebelum ditulis, walau klien bodoh.
+    const guarded = enforceTelemetryPolicy({ storageIsRemote: true }, rawEvent);
+    assert.equal(guarded.payload.input.command, 'cd', 'sink guard harus memangkas ke kata kerja');
+    assert.ok(!JSON.stringify(guarded.payload).includes('PROJECTS'), 'sink guard bocor path internal');
+
+    // (b) storage file: lokal → detail penuh boleh lewat, dashboard lokal memang butuh.
+    const passthrough = enforceTelemetryPolicy({ storageIsRemote: false }, rawEvent);
+    assert.equal(passthrough.payload.input.command, rawEvent.payload.input.command,
+      'sink guard tidak boleh merusak detail di hub file-lokal');
+
+    // (c) jalur HTTP asli ke hub test (yang dbPath-nya `file:`): tersimpan detail.
+    await postEvent(PORT, rawEvent);
+    const stored = (await db.getRecentToolCalls(30)).find((x) => x.id === 'tc_sink_guard');
+    if (!stored) throw new Error('tool call sink-guard tidak tersimpan');
+    const storedInput = typeof stored.input_json === 'string' ? JSON.parse(stored.input_json) : stored.input_json;
+    assert.match(storedInput.command, /PROJECTS/, 'hub file-lokal seharusnya menyimpan detail penuh');
+    console.log('✅ 11. sensor ditentukan storage: remote→"cd", file-lokal→detail penuh (teruji di jalur HTTP)');
+
+    // (d) dan kebalikannya, di proses yang sama tanpa menyentuh DB produksi:
+    // hub test menyamar sebagai storage-remote, lalu wire-nya diuji ulang.
+    Object.defineProperty(db, 'storageIsRemote', { value: true, configurable: true });
+    await postEvent(PORT, { ...rawEvent, payload: { ...rawEvent.payload, call_id: 'tc_sink_guard_remote' } });
+    await sleep(250);
+    const storedRemote = (await db.getRecentToolCalls(30)).find((x) => x.id === 'tc_sink_guard_remote');
+    const remoteInput = typeof storedRemote?.input_json === 'string' ? JSON.parse(storedRemote.input_json) : storedRemote?.input_json;
+    if (remoteInput?.command !== 'cd') {
+      throw new Error('🔴 storage remote masih menyimpan command mentah: ' + JSON.stringify(remoteInput?.command));
+    }
+    Object.defineProperty(db, 'storageIsRemote', { value: false, configurable: true });
+    console.log('✅ 11d. hub storage-remote menyimpan "cd" lewat jalur HTTP yang sama');
+    console.log('\n🎉 [HASIL] SEMUA 12 PENGUJIAN E2E BERHASIL!');
     ws.close();
     hub.close();
     server.close(() => process.exit(0));

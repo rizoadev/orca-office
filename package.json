@@ -20,7 +20,9 @@
     "publish:extension": "node tools/publish-package.js --dry-run",
     "test:extension": "node tools/test-global-extension.js",
     "pi:office": "pi -e extension/index.ts",
-    "publish:extension:live": "node tools/publish-package.js"
+    "publish:extension:live": "node tools/publish-package.js",
+    "audit:telemetry": "node --env-file=.env tools/scrub-telemetry.js",
+    "scrub:telemetry": "node --env-file=.env tools/scrub-telemetry.js --apply"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

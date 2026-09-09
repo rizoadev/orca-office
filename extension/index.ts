@@ -1,6 +1,6 @@
 import { getPersonaForSession, getSessionDisplayName, getSubagentPersona, shortSessionSuffix } from './indonesian-names.ts';
 import { getOfficeClientIdentity } from './identity.ts';
-import { sendOfficeEvent, officeTelemetryTarget, refreshOfficeConfig } from './client.ts';
+import { sendOfficeEvent, officeTelemetryTarget, refreshOfficeConfig, probeHubStorage } from './client.ts';
 import {
   DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_LOCAL_ENDPOINT,
@@ -71,6 +71,9 @@ export default function (pi: any) {
   // 1. Hook: session_start
   pi.on('session_start', async (_event: any, ctx: any) => {
     try {
+      // Tempat data didarat menentukan seberapa detail boleh keluar, jadi tanyakan SEBELUM
+      // event pertama. Fail-closed: kalau probe gagal, sensor tetap menyala.
+      await probeHubStorage();
       const sm = ctx?.sessionManager;
       const sId = sm?.getSessionId?.();
       if (typeof sId === 'string' && sId) {
@@ -380,7 +383,7 @@ export default function (pi: any) {
               `   endpoint : ${t.endpoint}${t.enabled ? '' : '  (telemetry OFF — /office on)'}`,
               `   dashboard: ${origin ?? '?'}`,
               `   token    : ${t.authed ? 'ya (bearer)' : 'BELUM ADA → /office connect <token>'}`,
-              `   redaksi  : ${t.redacting ? 'aktif (payload disensor sebelum keluar mesin)' : 'nonaktif (loopback)'}`,
+              `   redaksi  : ${t.redacting ? 'aktif' : 'nonaktif'} — storage hub: ${t.hubStorage}`,
               `   mesin    : ${clientIdentity.machine_name} · ${clientIdentity.machine_id}`,
               `   kirim    : ${t.lastSentAt ? new Date(t.lastSentAt).toLocaleTimeString() : 'belum ada'}${t.lastError ? ` · terakhir gagal: ${t.lastError}` : ''}`,
             ].join('\n'));

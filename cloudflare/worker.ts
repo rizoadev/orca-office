@@ -1,6 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { createClient, type Client } from '@libsql/client/web';
+import { sanitizeEvent } from '../extension/redact.ts';
 
 type CostSource = 'reported' | 'none';
 type SessionStatus = 'working' | 'idle' | 'offline';
@@ -705,7 +706,9 @@ export default {
         const client = db(env);
 
         if (request.method === 'GET' && url.pathname === '/api/health') {
-          return json({ status: 'ok', target: 'cloudflare-worker', time: now() });
+          // Worker selalu menulis ke Turso, jadi tidak pernah boleh membaca sebagai
+          // 'local-file': extension memakai field ini untuk memutuskan sensor payload.
+          return json({ status: 'ok', target: 'cloudflare-worker', storage: 'remote', time: now() });
         }
         // Everything past this point returns office contents, not just liveness. Ingest is the
         // one exception: it writes, so the write-only credential is enough there.
@@ -724,8 +727,14 @@ export default {
         }
         if (request.method === 'POST' && url.pathname === '/api/event') {
           const event = (await request.json()) as TelemetryEvent;
-          const result = await handleTelemetryEvent(env, event);
-          return json({ received: true, type: event.type, result });
+          // Storage Worker selalu Turso/cloud, jadi payload disensor ulang di sini juga:
+          // extension versi lama (atau mesin yang konfigurasinya loopback) akan mengirim
+          // command/path mentah, dan baris itu permanen.
+          const guarded: TelemetryEvent = event?.type && event?.payload
+            ? { ...event, payload: sanitizeEvent(event.type, event.payload) }
+            : event;
+          const result = await handleTelemetryEvent(env, guarded);
+          return json({ received: true, type: guarded.type, result });
         }
         if (request.method === 'POST' && url.pathname.startsWith('/api/sessions/') && url.pathname.endsWith('/kill')) {
           const parts = url.pathname.split('/');

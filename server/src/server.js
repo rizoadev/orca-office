@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OfficeDB } from './db.js';
+import { sanitizeEvent } from '../../extension/redact.ts';
 import { OfficeWebSocketHub } from './ws.js';
 import { ratesForModel } from './pricing.js';
 import { quoteFromPortkey } from './pricing-portkey.js';
@@ -116,9 +117,17 @@ export function createOfficeServer(options = {}) {
     }
 
     // GET /api/health
+    // `storage` dibaca extension untuk memutuskan sensor. Loopback BUKAN lagi jaminan:
+    // hub ini bisa menulis ke Turso, dan baris cloud bersifat permanen. Jadi hub yang
+    // menyatakan di mana datanya didarat — 'local-file' = satu-satunya keadaan di mana
+    // detail penuh boleh keluar.
     if (req.method === 'GET' && url.pathname === '/api/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
+      res.end(JSON.stringify({
+        status: 'ok',
+        time: Date.now(),
+        storage: db.db.url.startsWith('file:') ? 'local-file' : 'remote',
+      }));
       return;
     }
 
@@ -345,7 +354,25 @@ async function killSession(db, hub, sessionId) {
   };
 }
 
+/**
+ * Pagar terakhir, di sisi yang TAHU tempat data didarat.
+ *
+ * Kenapa tidak cukup di extension: keputusan sensor di sana dibuat saat modul dimuat,
+ * oleh kode versi lama yang masih jalan di sesi/mesin yang belum update (buktinya: sesi
+ * yang sedang mengirim ini masih menuliskan command mentah 1008 karakter ke Turso).
+ * Untuk hub dengan storage remote, apa pun yang datang dari klien disensor ulang sebelum
+ * ditulis — klien lama maupun baru, termasuk yang diarahkan ke :4317 lokal.
+ */
+export function enforceTelemetryPolicy(db, event) {
+  if (!db.storageIsRemote) return event;
+  const type = String(event?.type || '');
+  const payload = event?.payload;
+  if (!type || !payload || typeof payload !== 'object') return event;
+  return { ...event, payload: sanitizeEvent(type, payload) };
+}
+
 async function handleTelemetryEvent(db, hub, event) {
+  event = enforceTelemetryPolicy(db, event);
   const { type, payload } = event;
   if (!type || !payload) return;
 

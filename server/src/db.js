@@ -24,7 +24,11 @@ export function resolveDatabaseUrl(target) {
       'atau jalankan dengan target SQLite lokal lewat --db / createOfficeServer({ dbPath }).'
     );
   }
-  if (/^(libsql|https|wss|file):\/\//.test(value)) return value;
+  // `file:` diterima apa adanya — libSQL menerima bentuk satu-garis-miring (`file:/tmp/x.db`).
+  // Membungkusnya lagi dengan path.resolve menghasilkan `<cwd>/file:/tmp/x.db`: file DB
+  // dibuat di tempat tak terduga dan test/audit seolah jalan di DB kosong.
+  if (/^file:/i.test(value)) return value;
+  if (/^(libsql|https|wss):\/\//.test(value)) return value;
   if (value === ':memory:') return value;
   return `file:${path.resolve(value)}`;
 }
@@ -107,6 +111,13 @@ export class OfficeDB {
       .then(() => Promise.all([this.backfillWaitingPromptTasks(), this.backfillMissingProjectNames()]))
       .catch((err) => console.error('⚠️ [backfill] error:', err?.message || err));
   }
+
+  /**
+   * Apakah baris yang kita tulis bakal mendarat di luar mesin ini.
+   * Ini fakta penyimpanan, bukan fakta jaringan — `http://127.0.0.1:4317` yang menulis
+   * ke Turso tetap 'remote', dan justru keadaan itulah yang lolos dari sensor sisi klien.
+   */
+  get storageIsRemote() { return !this.db.url.startsWith('file:'); }
 
   /** Selesaikan sebelum query pertama apa pun (lihat kontrak di constructor). */
   ready() { return this._ready; }

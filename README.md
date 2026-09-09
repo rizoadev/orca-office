@@ -11,7 +11,7 @@ Repo ini adalah **sumber kebenaran** untuk proyek pi-office: kode extension modu
 - 🪑 **Kantor 3D coffee-shop** — 14 kursi, tiap sesi jadi bubble agent dengan avatar & nama Indonesia.
 - 🌐 **Extension Pi terpasang GLOBAL** — semua sesi `pi` di mesin otomatis terdaftar; `npm run sync:extension` membangun `extension/*.ts` menjadi `~/.pi/agent/extensions/pi-office.ts`.
 - 📦 **Install satu baris di mesin lain** — `pi install npm:@rizoadev/pi-office` lalu `/office connect <token>`. Endpoint Worker sudah bawaan paket; token tidak (dan tidak boleh) ikut terbawa.
-- 🛡 **Redaksi rahasia** — payload tool diringkas & rahasia disensor sebelum keluar mesin (hub non-loopback).
+- 🛡 **Redaksi rahasia berlapis** — command dipangkas ke satu kata kerja, path ke basename, body hasil tool tidak pernah dikirim; keputusan sensor ditentukan **tempat data didarat** (`/api/health → storage`), bukan alamat hub, dan ditegakkan ulang di sisi hub untuk klien lama.
 - 👥 **Roster tim & hierarki sub-agent** — sesi induk → sub-agent terlihat sebagai anggota tim baru.
 - ⚡ **Realtime tool-call feed, stream LLM, dan log terminal** via WebSocket.
 - 📊 **Billing coffee-shop** — setiap model jadi nama minuman (Claude → Cappuccino, GPT → Cold Brew); harga per 1M token & total per pegawai.
@@ -119,7 +119,8 @@ pi                       # sesi apa pun
 | `npm run dashboard`  | `ng serve` Angular (HMR, `:4200`, proxy `/api`+`/ws` → 4317) |
 | `npm run dev`        | `tools/run-dev.js`: hub `:4317` + `ng serve` `:4200` sekaligus |
 | `npm run build` | Build dashboard → `dashboard/dist` |
-| `npm test` | E2E (WS + register + tool + billing, port 4318) |
+| `npm test` | E2E 12 kasus (WS + register + tool + billing + scope reaper + pagar sensor), DB `file:` terisolasi |
+| `npm run audit:telemetry` | Audit baris lama di DB: mana yang tersimpan lebih rinci daripada hasil sensor |
 | `npm run simulate` | Kirim sesi palsu untuk demo |
 | `npm run backfill:usage` | Isi tagihan sesi lama dari log JSONL Pi |
 | `npm run cf:dev` / `npm run cf:deploy` | Cloudflare local / deploy |

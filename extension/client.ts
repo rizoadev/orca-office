@@ -1,5 +1,5 @@
 import { officeEventEndpoint, officeTelemetryEnabled, readOfficeExtensionConfig } from './config.ts';
-import { isLoopbackEndpoint, sanitizeEvent } from './redact.ts';
+import { sanitizeEvent } from './redact.ts';
 
 const SEND_TIMEOUT_MS = 1200;
 
@@ -7,11 +7,41 @@ let CONFIG = readOfficeExtensionConfig();
 let ENDPOINT = officeEventEndpoint(CONFIG);
 let OFFICE_TOKEN = process.env.OFFICE_TOKEN || CONFIG?.token || '';
 let ENABLED = officeTelemetryEnabled();
-// A loopback hub is on this machine, so full telemetry is fine there. Anything else —
-// LAN peer or the public Worker — gets the sanitized event.
-let REDACT = !isLoopbackEndpoint(ENDPOINT);
+
+// Keputusan sensor TIDAK boleh lagi bergantung pada "hop pertama loopback".
+// Sejak hub lokal menulis ke Turso/cloud, `http://127.0.0.1:4317` tetap berarti detail
+// penuh tersimpan di database bersama — dan baris itu permanen. Jadi yang ditanya adalah
+// tempat datanya DIDARAT, dan hanya hub yang tahu itu: dia melaporkannya lewat
+// GET /api/health → `storage`. Gagal probe / jawaban tak dikenal = tetap men-sensor
+// (fail-closed), bukan membuka.
+let REDACT = true;
+let hubStorage = 'unknown';
+let storageProbed = false;
 let lastError = '';
 let lastSentAt = 0;
+
+/** Tanya hub tempat datanya didarat. Panggil sebelum event pertama; jangan pernah blok. */
+export async function probeHubStorage(): Promise<string> {
+  if (storageProbed && !process.env.OFFICE_ENDPOINT) return hubStorage;
+  storageProbed = true;
+  try {
+    const origin = new URL(ENDPOINT).origin;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 900);
+    const headers: Record<string, string> = {};
+    if (OFFICE_TOKEN) headers.Authorization = `Bearer ${OFFICE_TOKEN}`;
+    const res = await fetch(`${origin}/api/health`, { headers, signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return hubStorage;
+    const body = (await res.json()) as { storage?: string };
+    hubStorage = typeof body?.storage === 'string' ? body.storage : 'unknown';
+    REDACT = hubStorage !== 'local-file';
+  } catch {
+    // Fail-closed: hub tak dikenal berarti sensor menyala.
+  }
+  return hubStorage;
+}
+
 
 /**
  * Re-resolve endpoint/token after ~/.pi/office/config.json changes, so `/office connect`
@@ -22,11 +52,13 @@ export function refreshOfficeConfig(): void {
   ENDPOINT = officeEventEndpoint(CONFIG);
   OFFICE_TOKEN = process.env.OFFICE_TOKEN || CONFIG?.token || '';
   ENABLED = officeTelemetryEnabled();
-  REDACT = !isLoopbackEndpoint(ENDPOINT);
+  storageProbed = false;
+  hubStorage = 'unknown';
+  REDACT = true;
 }
 
-export function officeTelemetryTarget(): { endpoint: string; redacting: boolean; authed: boolean; enabled: boolean; lastError: string; lastSentAt: number } {
-  return { endpoint: ENDPOINT, redacting: REDACT, authed: Boolean(OFFICE_TOKEN), enabled: ENABLED, lastError, lastSentAt };
+export function officeTelemetryTarget(): { endpoint: string; redacting: boolean; authed: boolean; enabled: boolean; hubStorage: string; lastError: string; lastSentAt: number } {
+  return { endpoint: ENDPOINT, redacting: REDACT, authed: Boolean(OFFICE_TOKEN), enabled: ENABLED, hubStorage, lastError, lastSentAt };
 }
 
 export async function sendOfficeEvent(type: string, payload: Record<string, any>): Promise<boolean> {

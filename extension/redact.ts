@@ -33,19 +33,35 @@ export function clip(value: string, maxLength: number): string {
 }
 
 /**
- * Keep a shell command legible (`git push --force-with-lease`) without shipping the
- * arguments that carry credentials. Pattern redaction alone is best-effort, so any
- * `KEY=value` token is masked structurally instead of being trusted to a regex.
+ * Yang boleh dilihat observer di feed: SATU KATA KERJA. Bukan perintahnya.
+ *
+ * Kenapa seketat ini: command shell adalah kanal bocor paling lebar yang kita punya.
+ * Di dalamnya ada path internal, nama service, flag kredensial, dan host — dan feed
+ * office sengaja ditampilkan ke banyak orang. Regex saja tidak cukup karena nilai
+ * kredensial sering lewat sebagai argumen POSISI (`curl -H "Authorization: Bearer …"`),
+ * bukan sebagai `KEY=value`. Yang dikirim karena itu cuma maksud aksinya: `cd`, `git`,
+ * `npm`, `curl`.
+ *
+ * Sengaja TANPA subcommand: `git commit` vs `git push --force` memang informatif, tapi
+ * di sanalah argumen mulai ikut-ikutan (nama branch, URL, path). Satu token tidak.
  */
-export function sanitizeCommand(command: string, maxTokens = 6): string {
-  const masked = redactSecrets(command).split(/[;&|\n]+/).flatMap((segment) =>
-    segment.trim().split(/\s+/).filter(Boolean).map((token) => {
-      const assignment = token.match(/^([^=]{1,60})=(.*)$/);
-      if (assignment && assignment[2]) return `${assignment[1]}=[redacted]`;
-      return token;
-    })
-  );
-  return clip(masked.slice(0, maxTokens).join(' '), 120);
+const COMMAND_WRAPPERS = new Set(['timeout', 'sudo', 'env', 'nohup', 'setsid', 'time', 'nice', 'doas']);
+
+export function commandVerb(command: string): string {
+  const firstSegment = redactSecrets(command).split(/[;&|\n]+/)[0] || '';
+  const tokens = firstSegment.trim().split(/\s+/).filter(Boolean).filter((token) => !token.startsWith('-'));
+  let index = 0;
+  while (index < tokens.length && COMMAND_WRAPPERS.has(tokens[index])) {
+    // `timeout 90 node …` / `sudo -u x systemctl …`: lewati pembungkus dan angkanya.
+    index += 1;
+    while (index < tokens.length && /^[\d.]+[smh]?$/.test(tokens[index])) index += 1;
+  }
+  return tokens[index] || clip(firstSegment, 20);
+}
+
+/** @deprecated pakai commandVerb(); dipertahankan untuk pembacaan hasil audit lama. */
+export function sanitizeCommand(command: string, maxTokens = 1): string {
+  return commandVerb(command);
 }
 
 export function isLoopbackEndpoint(endpoint: string): boolean {
@@ -55,6 +71,14 @@ export function isLoopbackEndpoint(endpoint: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Basename saja: `a/b/c.ts` → `c.ts`. Path penuh tidak keluar mesin. */
+export function pathBasename(value: string): string {
+  const clean = redactSecrets(String(value || '')).trim();
+  if (!clean) return '';
+  const parts = clean.split(/[\\/]+/).filter(Boolean);
+  return clip(parts[parts.length - 1] || clean, 60);
 }
 
 // Only these keys survive for a given tool. Anything not listed is dropped, so a new
@@ -82,7 +106,12 @@ export function summarizeToolInput(
   for (const key of allowed) {
     const value = input[key];
     if (typeof value === 'string') {
-      summary[key] = key === 'command' ? sanitizeCommand(value) : clip(redactSecrets(value), 120);
+      // `command` dan `path` adalah dua field yang paling banyak membocorkan struktur
+      // dalam mesin: perintah dipangkas ke satu kata kerja, path ke basename saja
+      // (masih cukup untuk "dia sedang mengerjakan redact.ts", tanpa /home/…/PROJEK).
+      if (key === 'command') summary[key] = commandVerb(value);
+      else if (key === 'path' || key === 'workflowScriptPath') summary[key] = pathBasename(value);
+      else summary[key] = clip(redactSecrets(value), 120);
     } else if (typeof value === 'number' || typeof value === 'boolean') {
       summary[key] = value;
     }

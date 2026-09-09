@@ -5,7 +5,7 @@
 // Sends machine identity, and redacts tool payloads whenever the hub is not loopback.
 // Install on another machine: pi install npm:@rizoadev/pi-office
 
-export const OFFICE_EXTENSION_VERSION = '1.1.0';
+export const OFFICE_EXTENSION_VERSION = '1.2.0';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -297,19 +297,35 @@ function clip(value: string, maxLength: number): string {
 }
 
 /**
- * Keep a shell command legible (`git push --force-with-lease`) without shipping the
- * arguments that carry credentials. Pattern redaction alone is best-effort, so any
- * `KEY=value` token is masked structurally instead of being trusted to a regex.
+ * Yang boleh dilihat observer di feed: SATU KATA KERJA. Bukan perintahnya.
+ *
+ * Kenapa seketat ini: command shell adalah kanal bocor paling lebar yang kita punya.
+ * Di dalamnya ada path internal, nama service, flag kredensial, dan host — dan feed
+ * office sengaja ditampilkan ke banyak orang. Regex saja tidak cukup karena nilai
+ * kredensial sering lewat sebagai argumen POSISI (`curl -H "Authorization: Bearer …"`),
+ * bukan sebagai `KEY=value`. Yang dikirim karena itu cuma maksud aksinya: `cd`, `git`,
+ * `npm`, `curl`.
+ *
+ * Sengaja TANPA subcommand: `git commit` vs `git push --force` memang informatif, tapi
+ * di sanalah argumen mulai ikut-ikutan (nama branch, URL, path). Satu token tidak.
  */
-function sanitizeCommand(command: string, maxTokens = 6): string {
-  const masked = redactSecrets(command).split(/[;&|\n]+/).flatMap((segment) =>
-    segment.trim().split(/\s+/).filter(Boolean).map((token) => {
-      const assignment = token.match(/^([^=]{1,60})=(.*)$/);
-      if (assignment && assignment[2]) return `${assignment[1]}=[redacted]`;
-      return token;
-    })
-  );
-  return clip(masked.slice(0, maxTokens).join(' '), 120);
+const COMMAND_WRAPPERS = new Set(['timeout', 'sudo', 'env', 'nohup', 'setsid', 'time', 'nice', 'doas']);
+
+function commandVerb(command: string): string {
+  const firstSegment = redactSecrets(command).split(/[;&|\n]+/)[0] || '';
+  const tokens = firstSegment.trim().split(/\s+/).filter(Boolean).filter((token) => !token.startsWith('-'));
+  let index = 0;
+  while (index < tokens.length && COMMAND_WRAPPERS.has(tokens[index])) {
+    // `timeout 90 node …` / `sudo -u x systemctl …`: lewati pembungkus dan angkanya.
+    index += 1;
+    while (index < tokens.length && /^[\d.]+[smh]?$/.test(tokens[index])) index += 1;
+  }
+  return tokens[index] || clip(firstSegment, 20);
+}
+
+/** @deprecated pakai commandVerb(); dipertahankan untuk pembacaan hasil audit lama. */
+function sanitizeCommand(command: string, maxTokens = 1): string {
+  return commandVerb(command);
 }
 
 function isLoopbackEndpoint(endpoint: string): boolean {
@@ -319,6 +335,14 @@ function isLoopbackEndpoint(endpoint: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Basename saja: `a/b/c.ts` → `c.ts`. Path penuh tidak keluar mesin. */
+function pathBasename(value: string): string {
+  const clean = redactSecrets(String(value || '')).trim();
+  if (!clean) return '';
+  const parts = clean.split(/[\\/]+/).filter(Boolean);
+  return clip(parts[parts.length - 1] || clean, 60);
 }
 
 // Only these keys survive for a given tool. Anything not listed is dropped, so a new
@@ -346,7 +370,12 @@ function summarizeToolInput(
   for (const key of allowed) {
     const value = input[key];
     if (typeof value === 'string') {
-      summary[key] = key === 'command' ? sanitizeCommand(value) : clip(redactSecrets(value), 120);
+      // `command` dan `path` adalah dua field yang paling banyak membocorkan struktur
+      // dalam mesin: perintah dipangkas ke satu kata kerja, path ke basename saja
+      // (masih cukup untuk "dia sedang mengerjakan redact.ts", tanpa /home/…/PROJEK).
+      if (key === 'command') summary[key] = commandVerb(value);
+      else if (key === 'path' || key === 'workflowScriptPath') summary[key] = pathBasename(value);
+      else summary[key] = clip(redactSecrets(value), 120);
     } else if (typeof value === 'number' || typeof value === 'boolean') {
       summary[key] = value;
     }
@@ -598,11 +627,41 @@ let CONFIG = readOfficeExtensionConfig();
 let ENDPOINT = officeEventEndpoint(CONFIG);
 let OFFICE_TOKEN = process.env.OFFICE_TOKEN || CONFIG?.token || '';
 let ENABLED = officeTelemetryEnabled();
-// A loopback hub is on this machine, so full telemetry is fine there. Anything else —
-// LAN peer or the public Worker — gets the sanitized event.
-let REDACT = !isLoopbackEndpoint(ENDPOINT);
+
+// Keputusan sensor TIDAK boleh lagi bergantung pada "hop pertama loopback".
+// Sejak hub lokal menulis ke Turso/cloud, `http://127.0.0.1:4317` tetap berarti detail
+// penuh tersimpan di database bersama — dan baris itu permanen. Jadi yang ditanya adalah
+// tempat datanya DIDARAT, dan hanya hub yang tahu itu: dia melaporkannya lewat
+// GET /api/health → `storage`. Gagal probe / jawaban tak dikenal = tetap men-sensor
+// (fail-closed), bukan membuka.
+let REDACT = true;
+let hubStorage = 'unknown';
+let storageProbed = false;
 let lastError = '';
 let lastSentAt = 0;
+
+/** Tanya hub tempat datanya didarat. Panggil sebelum event pertama; jangan pernah blok. */
+export async function probeHubStorage(): Promise<string> {
+  if (storageProbed && !process.env.OFFICE_ENDPOINT) return hubStorage;
+  storageProbed = true;
+  try {
+    const origin = new URL(ENDPOINT).origin;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 900);
+    const headers: Record<string, string> = {};
+    if (OFFICE_TOKEN) headers.Authorization = `Bearer ${OFFICE_TOKEN}`;
+    const res = await fetch(`${origin}/api/health`, { headers, signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return hubStorage;
+    const body = (await res.json()) as { storage?: string };
+    hubStorage = typeof body?.storage === 'string' ? body.storage : 'unknown';
+    REDACT = hubStorage !== 'local-file';
+  } catch {
+    // Fail-closed: hub tak dikenal berarti sensor menyala.
+  }
+  return hubStorage;
+}
+
 
 /**
  * Re-resolve endpoint/token after ~/.pi/office/config.json changes, so `/office connect`
@@ -613,11 +672,13 @@ function refreshOfficeConfig(): void {
   ENDPOINT = officeEventEndpoint(CONFIG);
   OFFICE_TOKEN = process.env.OFFICE_TOKEN || CONFIG?.token || '';
   ENABLED = officeTelemetryEnabled();
-  REDACT = !isLoopbackEndpoint(ENDPOINT);
+  storageProbed = false;
+  hubStorage = 'unknown';
+  REDACT = true;
 }
 
-function officeTelemetryTarget(): { endpoint: string; redacting: boolean; authed: boolean; enabled: boolean; lastError: string; lastSentAt: number } {
-  return { endpoint: ENDPOINT, redacting: REDACT, authed: Boolean(OFFICE_TOKEN), enabled: ENABLED, lastError, lastSentAt };
+function officeTelemetryTarget(): { endpoint: string; redacting: boolean; authed: boolean; enabled: boolean; hubStorage: string; lastError: string; lastSentAt: number } {
+  return { endpoint: ENDPOINT, redacting: REDACT, authed: Boolean(OFFICE_TOKEN), enabled: ENABLED, hubStorage, lastError, lastSentAt };
 }
 
 export async function sendOfficeEvent(type: string, payload: Record<string, any>): Promise<boolean> {
@@ -881,6 +942,9 @@ function officeExtension(pi: any) {
   // 1. Hook: session_start
   pi.on('session_start', async (_event: any, ctx: any) => {
     try {
+      // Tempat data didarat menentukan seberapa detail boleh keluar, jadi tanyakan SEBELUM
+      // event pertama. Fail-closed: kalau probe gagal, sensor tetap menyala.
+      await probeHubStorage();
       const sm = ctx?.sessionManager;
       const sId = sm?.getSessionId?.();
       if (typeof sId === 'string' && sId) {
@@ -1190,7 +1254,7 @@ function officeExtension(pi: any) {
               `   endpoint : ${t.endpoint}${t.enabled ? '' : '  (telemetry OFF — /office on)'}`,
               `   dashboard: ${origin ?? '?'}`,
               `   token    : ${t.authed ? 'ya (bearer)' : 'BELUM ADA → /office connect <token>'}`,
-              `   redaksi  : ${t.redacting ? 'aktif (payload disensor sebelum keluar mesin)' : 'nonaktif (loopback)'}`,
+              `   redaksi  : ${t.redacting ? 'aktif' : 'nonaktif'} — storage hub: ${t.hubStorage}`,
               `   mesin    : ${clientIdentity.machine_name} · ${clientIdentity.machine_id}`,
               `   kirim    : ${t.lastSentAt ? new Date(t.lastSentAt).toLocaleTimeString() : 'belum ada'}${t.lastError ? ` · terakhir gagal: ${t.lastError}` : ''}`,
             ].join('\n'));

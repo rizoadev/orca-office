@@ -67,7 +67,7 @@ async function loadBundle({ tag, token, machineName }) {
     ui: { notify: (text, level) => notified.push({ text, level }) },
   };
 
-  return { mod, copy, posted, notified, hooks, commands, tools, ctx, home };
+  return { mod, copy, posted, notified, hooks, commands, tools, ctx, home, probes: [] };
 }
 
 /** The full telemetry walk: register → prompt → tool call → tool result → idle. */
@@ -87,7 +87,12 @@ async function driveTelemetry(bundle) {
     isError: false,
   }, ctx);
   await hooks.get('agent_end')({}, ctx);
-  return bundle.posted.map((p) => ({ url: String(p.url), headers: p.init.headers, body: JSON.parse(p.init.body) }));
+  // /api/health (probe storage) ikut terjaring mock fetch dan tidak punya body — yang
+  // diuji di sini adalah event telemetry, jadi panggilan GET dipisahkan.
+  bundle.probes = bundle.posted.filter((p) => !p.init.body).map((p) => String(p.url));
+  return bundle.posted.filter((p) => p.init.body).map((p) => ({
+    url: String(p.url), headers: p.init.headers, body: JSON.parse(p.init.body),
+  }));
 }
 
 const byType = (wire, type) => wire.find((e) => e.body.type === type).body.payload;
@@ -102,6 +107,8 @@ const hints = fresh.notified.filter((n) => /\/office connect/.test(n.text));
 assert.equal(hints.length, 1, 'hint /office connect harus muncul tepat sekali');
 assert.ok(fresh.tools.has('office_set_task') && fresh.tools.has('office_announce'), 'custom tools tidak terdaftar');
 assert.ok(fresh.commands.has('office'), '/office harus terdaftar');
+// Storage di-probe sebelum event pertama: tanpanya kita tidak berhak berasumsi loopback aman.
+assert.ok(fresh.probes.some((u) => /\/api\/health$/.test(u)), 'probe /api/health harus dilakukan sebelum event pertama');
 
 // ── 2. Mesin terdaftar: token dari env, payload wajib tersensor ───────
 const authed = await loadBundle({ tag: 'authed', token: 'test-ingest-token', machineName: 'laptop-uji' });
@@ -122,7 +129,9 @@ assert.ok(fs.existsSync(path.join(authed.home, '.pi', 'office', 'machine-id')), 
 const toolCall = byType(wire, 'tool.call');
 assert.ok(!('hidden' in toolCall.input), 'field di luar allowlist tidak boleh ikut');
 assert.ok(Array.isArray(toolCall.input._omitted), 'field yang dibuang harus terlihat sebagai _omitted');
-assert.ok(toolCall.input.command.length < 200, 'command tidak dipotong');
+// Feed cuma boleh melihat kata kerja: perintah penuh membawa path internal, host, dan flag kredensial.
+assert.equal(toolCall.input.command, 'cat', `command harus dipangkas ke kata kerja, dapat: ${JSON.stringify(toolCall.input.command)}`);
+assert.ok(toolCall.input.command.length < 20, 'command masih terlalu detail');
 
 const toolResult = byType(wire, 'tool.result');
 assert.ok(!('result' in toolResult) && !('details' in toolResult), 'body hasil tool masih terkirim!');
@@ -168,6 +177,27 @@ assert.match(src, /officeExtensionShouldDeferToOtherCopy\(\)/, 'guard bentrok in
 assert.doesNotMatch(src, /globalThis\[.__PI_OFFICE/, 'guard globalThis terlarang: /reload akan mematikan telemetry');
 assert.match(src, /export const OFFICE_EXTENSION_VERSION = '\d+\.\d+\.\d+';/, 'version stamp hilang');
 assert.doesNotMatch(src, /import .* from '\.\.\//, 'bundle tidak boleh punya import relatif keluar dir');
+
+// ── 5. Sensor tidak boleh lagi bergantung pada hop loopback ───────────
+const redactSrc = fs.readFileSync(path.join(REPO, 'extension', 'redact.ts'), 'utf8');
+assert.match(redactSrc, /export function commandVerb/, 'commandVerb hilang');
+const clientSrc = fs.readFileSync(path.join(REPO, 'extension', 'client.ts'), 'utf8');
+assert.match(clientSrc, /let REDACT = true/, 'default sensor harus fail-closed, bukan turunan loopback');
+assert.doesNotMatch(clientSrc, /REDACT = !isLoopbackEndpoint/, 'sensor jangan diputuskan oleh alamat hub saja');
+
+// Bentuk commandVerb, termasuk pembungkus & CLI yang butuh subcommand.
+const { commandVerb, pathBasename } = await import(`file://${path.join(REPO, 'extension', 'redact.ts')}`);
+for (const [input, want] of [
+  ['cd /home/rizoa/PROJECTS/office && grep -rn "token" . | head', 'cd'],
+  ['git commit -q -F - <<\'EOF\'\npesan rahasia', 'git'],
+  ['timeout 90 node --env-file=.env tools/scrub.js', 'node'],
+  ['npm run publish:extension:live 2>&1 | tail', 'npm'],
+  ['sudo systemctl restart nginx', 'systemctl'],
+  ['curl -sS -H "Authorization: Bearer abcdef" https://api.internal/v1', 'curl'],
+]) {
+  assert.equal(commandVerb(input), want, `commandVerb(${JSON.stringify(input)})`);
+}
+assert.equal(pathBasename('/home/rizoa/.pi/office/config.json'), 'config.json');
 
 console.log(`✅ ${path.basename(path.dirname(TARGET))}/${path.basename(TARGET)} — ${wire.length} event terverifikasi`);
 console.log('   cloud default :', DEFAULT_CLOUD);

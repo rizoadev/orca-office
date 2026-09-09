@@ -119,15 +119,31 @@ per sesi bila endpoint remote dan token belum ada.
 
 ### Redaksi otomatis (`redact.ts`)
 
-Kalau hub **bukan loopback** (LAN/cloud publik), sebelum dikirim:
+**Keputusan sensor diambil dari tempat data didarat, bukan dari alamat hub.** Saat
+`session_start`, extension menanyakan `GET /api/health` → `storage`: hanya `'local-file'`
+yang membuka detail penuh; apa pun yang lain (atau probe gagal) = sensor menyala. Alasannya:
+sejak hub lokal menulis ke Turso, `http://127.0.0.1:4317` tetap berarti barisnya mendarat di
+database bersama — dan baris itu permanen.
 
-- `tool.call` → input diringkas ke **allowlist per tool** (`bash`: `command`,`timeout`; `read`: `path`,`offset`,`limit`; `write`/`edit`: `path`; `subagent`: `agent`,`task`, …). Kunci lain dibuang dan disebut di `_omitted`. `command` dipotong 160 karakter.
+Dan karena klien lama / sesi yang sudah berjalan tidak ikut ter-upgrade, **hub menegakkan
+sendiri** (`enforceTelemetryPolicy` di `server.js`, dan selalu di Worker): payload di-sensor
+ulang sebelum ditulis. Terbukti: POST `tool.call` berisi command mentah ke hub storage-remote
+tersimpan sebagai `{"command":"cd"}` (test e2e no. 11/11d).
+
+Saat sensor aktif, sebelum event meninggalkan mesin:
+
+- `tool.call` → input diringkas ke **allowlist per tool** (`bash`: `command`,`timeout`; `read`: `path`,`offset`,`limit`; `write`/`edit`: `path`; `subagent`: `agent`,`task`, …). Kunci lain dibuang dan disebut di `_omitted`.
+- `command` → **satu kata kerja** (`commandVerb()`): potong di segmen pertama (`&&`/`;`/`|`), buang flag dan pembungkus (`timeout 90 node` → `node`), sisakan `cd`/`git`/`npm`/`curl`. Sengaja tanpa subcommand — di situlah argumen (branch, URL, path) mulai ikut.
+- `path` → **basename** saja (`/home/x/proyek/server/db.js` → `db.js`). Masih cukup untuk "dia sedang mengerjakan apa", tanpa membuka struktur repo.
+- `subagent.task` → tetap teks (dipotong + disensor): ini satu-satunya cara melihat sub-agent bekerja.
 - `tool.result` → **body tidak pernah dikirim**. Hanya `output_chars` + `is_error` + durasi.
 - `llm.stream`/`log.append`/`task`/`name` → dipotong + rahasia diredaksi.
 - Pola rahasia: private key PEM, JWT, AWS AKIA, GitHub/Slack token, `sk-*`, assignment `KEY=value`, kredensial dalam URL.
 - Tipe event tak dikenal → **fail-closed** (deep-clone ter-redaksi), bukan lolos mentah.
 
-Ke hub loopback (`127.0.0.1`, `localhost`, `::1`) telemetry tetap detail penuh — dashboard lokal butuh itu.
+Hub dengan storage `file:` lokal mengirim detail penuh — dashboard lokal memang butuh.
+Tetapi itu bukan lagi konsekuensi dari "loopback": hub loopback yang menulis ke Turso wajib
+tetap men-sensor, dan itu yang dicegah pagar di atas.
 
 ### Konfigurasi endpoint
 
