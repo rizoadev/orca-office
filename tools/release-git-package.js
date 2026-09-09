@@ -67,8 +67,20 @@ try {
 
 Dibangun dari rizoadev/orca-office@${headCommit} oleh tools/release-git-package.js.
 Sumber: packaging/pi-office/ — JANGAN sunting salinan repo git ini langsung.`], dst);
-  run('git', ['tag', '-f', tag], dst);
-  run('git', ['push', 'origin', 'HEAD:main', '--follow-tags'], dst);
+  // Tag HARUS annotated + didorong eksplisit. `--follow-tags` tidak membawa tag
+  // lightweight, jadi rilis sebelumnya mencetak "🎉 Terbit" sambil repo paket sebenarnya
+  // punya NOL tag — `pi install ...@v1.2.0` gagal `git checkout`, dan tidak ada yang tahu
+  // karena yang diuji adalah isi clone (HEAD), bukan ref yang di-pin.
+  run('git', ['tag', '-f', '-a', tag, '-m', `${manifest.name} ${manifest.version} (dari orca-office@${headCommit})`], dst);
+  run('git', ['push', 'origin', 'HEAD:main'], dst);
+  run('git', ['push', '-f', 'origin', `refs/tags/${tag}`], dst);
+
+  // Jangan pernah percaya push tanpa verifikasi ke remote.
+  const remote = run('git', ['ls-remote', '--tags', GIT_URL], dst);
+  if (!remote.includes(`refs/tags/${tag}`)) throw new Error(`tag ${tag} tidak ada di remote setelah push:\n${remote}`);
+  const sha = run('git', ['rev-parse', 'HEAD'], dst).trim();
+  if (!remote.includes(sha)) throw new Error(`commit ${sha} tidak menjadi ujung tag ${tag} di remote`);
+  console.log(`   terverifikasi: ${tag} → ${sha.slice(0, 7)} ada di remote`);
   console.log(`\n🎉 Terbit. Instal di mesin mana pun:`);
   console.log(`   pi install git:github.com/rizoadev/${manifest.name}`);
   console.log(`   pi install git:github.com/rizoadev/${manifest.name}@${tag}   ← pin versi`);
