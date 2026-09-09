@@ -27,6 +27,18 @@ extension/                 ← sumber modular (repo ini)
 ```bash
 pi install git:github.com/rizoadev/pi-office   # pasang extension (satu file, nol dependency)
 # `pi install npm:pi-office` setara dan akan menyusul: isinya identik, tapi registry npm
+### Dua cara mengelola — jangan ketuker
+
+| Mesin | Cara | Update |
+|---|---|---|
+| **dev box ini** | file longgar `~/.pi/agent/extensions/pi-office.ts`, hasil `npm run sync:extension` | `node tools/build-global-extension.js && npm run sync:extension` → `/reload` |
+| **laptop teammate** | paket git: `pi install git:github.com/rizoadev/pi-office@v1.2.2` | `pi update --extension git:github.com/rizoadev/pi-office@v1.2.3` |
+
+`pi update --extension git:…` hanya bekerja untuk sumber yang terdaftar sebagai **paket** di
+`settings.json`. Di dev box entry-nya `extensions/pi-office.ts` (path), jadi perintah itu
+balas `No matching package found` — bukan error pi, melainkan memang bukan jalur mesin ini.
+Keduanya menaruh file yang sama; jangan aktifkan dua-duanya sekaligus (extension sudah punya
+guard defer, tapi satu jalur saja lebih jelas).
 # menolak terbit sampai akun punya 2FA aktif atau granular token dengan bypass-2FA.
 pi                                     # buka sesi pi apa pun
 /office connect <token-kantor>         # satu kali per mesin
