@@ -5,12 +5,14 @@
 import { Injectable, inject } from '@angular/core';
 import * as THREE from 'three';
 import { EngineContext } from '../core/engine-context';
+import type { AgentData } from '../../core/models/types';
+import { OFFICE_SEATS } from '../core/engine-seats';
 
 @Injectable()
 export class SeatItemsService {
   private readonly ctx = inject(EngineContext);
 
-  seatItems: Record<string, { objects: THREE.Object3D[]; screen?: { m: THREE.MeshBasicMaterial; base: number; ph: number }; steam?: { m: THREE.Mesh; t: number; base: number } }> = {};
+  seatItems: Record<string, { objects: THREE.Object3D[]; screen?: { m: THREE.MeshBasicMaterial; base: number; ph: number }; steam?: { m: THREE.Mesh; t: number; base: number }; pop?: number }> = {};
 
   addSeatItems(
     agentId: string,
@@ -56,10 +58,21 @@ export class SeatItemsService {
     objects.push(steamMesh);
 
     const screenPulse = { m: screenMat, base: color, ph: Math.random() * 9 };
-    const steam = { m: steamMesh, t: Math.random() * 9, base: cup.position.y + 0.2 };    this.ctx.screens.push(screenPulse);
+    const steam = { m: steamMesh, t: Math.random() * 9, base: cup.position.y + 0.2 };
+    this.ctx.screens.push(screenPulse);
     this.ctx.steams.push(steam);
-    this.seatItems[agentId] = { objects, screen: screenPulse, steam };
+
+    // Barang tidak "plak" muncul di meja. Ia mengembang dari permukaan meja,
+    // seperti orang yang baru membuka laptop setelah duduk.
+    objects.forEach((object) => object.scale.setScalar(0.001));
+    this.seatItems[agentId] = { objects, screen: screenPulse, steam, pop: 0 };
   }
+
+  /**
+   * Laptop & kopi baru dikeluarkan SETELAH orangnya benar-benar duduk di kursinya.
+   * Dipanggil saat agent menyelesaikan jalur menuju meja, bukan saat ia terdaftar —
+   * itu yang membuat kursi terlihat sudah OKUPASI padahal orangnya masih di pintu.
+   */
 
   removeSeatItems(agentId: string) {
     const items = this.seatItems[agentId];
@@ -75,6 +88,15 @@ export class SeatItemsService {
     delete this.seatItems[agentId];
   }
 
+  revealSeatItems(a: AgentData) {
+    if (!a.isRealPi || this.seatItems[a.id]) return;
+    // Masih jalan, pamit keluar, atau sedang di mushola: kursinya belum dia huni.
+    if (a.mode === 'to' || a.mode === 'leaving' || a.mode === 'mushola') return;
+
+    const seatConfig = OFFICE_SEATS.find((seat) => seat.seat[0] === a.seat[0] && seat.seat[1] === a.seat[1]);
+    if (seatConfig) this.addSeatItems(a.id, seatConfig, a.c);
+  }
+
   step(dt: number) {
     // Screens & steams
     this.ctx.screens.forEach((s) => {
@@ -88,11 +110,13 @@ export class SeatItemsService {
       (s.m.material as THREE.MeshBasicMaterial).opacity = 0.2 + Math.abs(Math.sin(s.t * 3)) * 0.14;
     });
 
-    this.ctx.steams.forEach((s) => {
-      s.t += dt;
-      s.m.position.y += dt * 0.22;
-      if (s.m.position.y > s.base + 0.5) s.m.position.y = s.base;
-      (s.m.material as THREE.MeshBasicMaterial).opacity = 0.2 + Math.abs(Math.sin(s.t * 3)) * 0.14;
+    // Laptop & kopi mengembang setelah pemiliknya duduk — pasangan dari
+    // scale.setScalar(0.001) di addSeatItems().
+    Object.values(this.seatItems).forEach((items) => {
+      if (items.pop === undefined || items.pop >= 1) return;
+      items.pop = Math.min(1, items.pop + dt * 3.6);
+      const ease = 1 - Math.pow(1 - items.pop, 3);
+      items.objects.forEach((object) => object.scale.setScalar(0.001 + ease * 0.999));
     });
   }
 }

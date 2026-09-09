@@ -9,6 +9,7 @@ import { DoorService } from '../navigation/door.service';
 import { FeedService } from '../core/feed.service';
 import { MusholaService } from '../rooms/mushola.service';
 import { PathService } from '../navigation/paths.service';
+import { SeatItemsService } from '../furniture/seat-items.service';
 import { SessionSyncService } from '../session/session-sync.service';
 import type { AgentData } from '../../core/models/types';
 
@@ -19,6 +20,7 @@ export class MovementService {
   private readonly feed = inject(FeedService);
   private readonly mushola = inject(MusholaService);
   private readonly paths = inject(PathService);
+  private readonly seatItems = inject(SeatItemsService);
   private readonly sync = inject(SessionSyncService);
 
   talkPair: { x: string; y: string } | null = null;
@@ -142,6 +144,8 @@ export class MovementService {
             a._y = S.y;
             P.g.rotation.y = S.rot + Math.PI;
           }
+          // Baru sekarang boleh buka laptop.
+          this.seatItems.revealSeatItems(a);
         }
         P.lL.rotation.x = P.lR.rotation.x = 0;
       }

@@ -186,7 +186,7 @@ export class OfficeEngine {
   playSpots: THREE.Vector3[] = [];
   steams: { m: THREE.Mesh; t: number; base: number }[] = [];
   screens: { m: THREE.MeshBasicMaterial; base: number; ph: number }[] = [];
-  seatItems: Record<string, { objects: THREE.Object3D[]; screen?: { m: THREE.MeshBasicMaterial; base: number; ph: number }; steam?: { m: THREE.Mesh; t: number; base: number } }> = {};
+  seatItems: Record<string, { objects: THREE.Object3D[]; screen?: { m: THREE.MeshBasicMaterial; base: number; ph: number }; steam?: { m: THREE.Mesh; t: number; base: number }; pop?: number }> = {};
   beams: { pk: THREE.Mesh; li: THREE.Line; cur: THREE.QuadraticBezierCurve3; pr: number; sp: number }[] = [];
 
   // Papan menu 3D — digambar ulang dari tagihan sungguhan (nama kopi = model LLM).
@@ -2457,9 +2457,28 @@ export class OfficeEngine {
     objects.push(steamMesh);
 
     const screenPulse = { m: screenMat, base: color, ph: Math.random() * 9 };
-    const steam = { m: steamMesh, t: Math.random() * 9, base: cup.position.y + 0.2 };    this.screens.push(screenPulse);
+    const steam = { m: steamMesh, t: Math.random() * 9, base: cup.position.y + 0.2 };
+    this.screens.push(screenPulse);
     this.steams.push(steam);
-    this.seatItems[agentId] = { objects, screen: screenPulse, steam };
+
+    // Barang tidak "plak" muncul di meja. Ia mengembang dari permukaan meja,
+    // seperti orang yang baru membuka laptop setelah duduk.
+    objects.forEach((object) => object.scale.setScalar(0.001));
+    this.seatItems[agentId] = { objects, screen: screenPulse, steam, pop: 0 };
+  }
+
+  /**
+   * Laptop & kopi baru dikeluarkan SETELAH orangnya benar-benar duduk di kursinya.
+   * Dipanggil saat agent menyelesaikan jalur menuju meja, bukan saat ia terdaftar —
+   * itu yang membuat kursi terlihat sudah OKUPASI padahal orangnya masih di pintu.
+   */
+  revealSeatItems(a: AgentData) {
+    if (!a.isRealPi || this.seatItems[a.id]) return;
+    // Masih jalan, pamit keluar, atau sedang di mushola: kursinya belum dia huni.
+    if (a.mode === 'to' || a.mode === 'leaving' || a.mode === 'mushola') return;
+
+    const seatConfig = OFFICE_SEATS.find((seat) => seat.seat[0] === a.seat[0] && seat.seat[1] === a.seat[1]);
+    if (seatConfig) this.addSeatItems(a.id, seatConfig, a.c);
   }
 
   removeSeatItems(agentId: string) {
@@ -2805,6 +2824,8 @@ export class OfficeEngine {
             a._y = S.y;
             P.g.rotation.y = S.rot + Math.PI;
           }
+          // Baru sekarang boleh buka laptop.
+          this.revealSeatItems(a);
         }
         P.lL.rotation.x = P.lR.rotation.x = 0;
       }
@@ -2918,11 +2939,13 @@ export class OfficeEngine {
         (s.m.material as THREE.MeshBasicMaterial).opacity = 0.2 + Math.abs(Math.sin(s.t * 3)) * 0.14;
       });
 
-      this.steams.forEach((s) => {
-        s.t += dt;
-        s.m.position.y += dt * 0.22;
-        if (s.m.position.y > s.base + 0.5) s.m.position.y = s.base;
-        (s.m.material as THREE.MeshBasicMaterial).opacity = 0.2 + Math.abs(Math.sin(s.t * 3)) * 0.14;
+      // Laptop & kopi mengembang setelah pemiliknya duduk — pasangan dari
+      // scale.setScalar(0.001) di addSeatItems().
+      Object.values(this.seatItems).forEach((items) => {
+        if (items.pop === undefined || items.pop >= 1) return;
+        items.pop = Math.min(1, items.pop + dt * 3.6);
+        const ease = 1 - Math.pow(1 - items.pop, 3);
+        items.objects.forEach((object) => object.scale.setScalar(0.001 + ease * 0.999));
       });
 
       // Berkas matahari: napas pelan (debu & intensitas awan), bukan kedip.
@@ -3014,7 +3037,8 @@ export class OfficeEngine {
         const agentId = `real_${String(s.id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
         this.seats[agentId] = { seat: seatPos, stand, rot: seatConfig.rot, y: 0 };
-        this.addSeatItems(agentId, seatConfig, colorHex);
+        // Laptop TIDAK dipasang di sini — orangnya masih di pintu. revealSeatItems()
+        // yang memanggilnya begitu dia selesai jalan dan duduk.
 
         const personMesh = this.createPersonMesh(colorHex, s.name, s.avatar);
         personMesh.g.rotation.y = Math.PI;
@@ -3082,8 +3106,9 @@ export class OfficeEngine {
         existing.orcaWorkspace = s.orca_workspace ?? existing.orcaWorkspace;
         existing.orcaPane = s.orca_pane ?? existing.orcaPane;
         existing.clientKind = s.client_kind ?? existing.clientKind;
-        const existingSeatConfig = OFFICE_SEATS.find((seat) => seat.seat[0] === existing.seat[0] && seat.seat[1] === existing.seat[1]);
-        if (existingSeatConfig) this.addSeatItems(existing.id, existingSeatConfig, existing.c);
+        // Poll berikutnya bisa datang saat orangnya masih berjalan; revealSeatItems
+        // hanya memasang kalau dia sudah benar-benar di kursi.
+        this.revealSeatItems(existing);
         existing.llmStream = s.liveStream || existing.llmStream;
         existing.status = s.status;
         existing.prog = targetMode === 'work' ? 80 : 0;

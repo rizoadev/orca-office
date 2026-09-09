@@ -44,7 +44,8 @@ export class SessionSyncService {
         const agentId = `real_${String(s.id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
         this.ctx.seats[agentId] = { seat: seatPos, stand, rot: seatConfig.rot, y: 0 };
-        this.seatItems.addSeatItems(agentId, seatConfig, colorHex);
+        // Laptop TIDAK dipasang di sini — orangnya masih di pintu. revealSeatItems()
+        // yang memanggilnya begitu dia selesai jalan dan duduk.
 
         const personMesh = this.person.createPersonMesh(colorHex, s.name, s.avatar);
         personMesh.g.rotation.y = Math.PI;
@@ -112,8 +113,9 @@ export class SessionSyncService {
         existing.orcaWorkspace = s.orca_workspace ?? existing.orcaWorkspace;
         existing.orcaPane = s.orca_pane ?? existing.orcaPane;
         existing.clientKind = s.client_kind ?? existing.clientKind;
-        const existingSeatConfig = OFFICE_SEATS.find((seat) => seat.seat[0] === existing.seat[0] && seat.seat[1] === existing.seat[1]);
-        if (existingSeatConfig) this.seatItems.addSeatItems(existing.id, existingSeatConfig, existing.c);
+        // Poll berikutnya bisa datang saat orangnya masih berjalan; revealSeatItems
+        // hanya memasang kalau dia sudah benar-benar di kursi.
+        this.seatItems.revealSeatItems(existing);
         existing.llmStream = s.liveStream || existing.llmStream;
         existing.status = s.status;
         existing.prog = targetMode === 'work' ? 80 : 0;
