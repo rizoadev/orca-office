@@ -38,7 +38,7 @@ Variabel environment server:
 
 ## REST API
 
-Semua response JSON, CORS terbuka (`*`) untuk kebutuhan Vite dev & `sample.html`.
+Semua response JSON. `Access-Control-Allow-Origin: *` dipertahankan untuk `sample.html`, TAPI tidak cukup untuk dev lintas-origin: semua `fetch` dikirim dengan `credentials:'include'` (butuh cookie token), dan kombinasi `*` + credentials diblokir CORS spec. Karena itu `ng serve` memakai `dashboard/proxy.conf.json` (relatif, same-origin) — bukan URL absolut ke `:4317`.
 
 | Method & Path | Fungsi |
 |---|---|

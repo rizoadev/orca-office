@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node tools/run-dev.js",
     "server": "node server/src/index.js",
-    "dashboard": "cd dashboard && npx ng serve --host 0.0.0.0 --port 4200",
+    "dashboard": "cd dashboard && npx ng serve --host 0.0.0.0 --port 4200 --hmr",
     "build": "cd dashboard && npx ng build --configuration production",
     "cf:dev": "npm run build && wrangler dev",
     "cf:deploy": "npm run build && wrangler deploy",
@@ -21,13 +21,6 @@
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "@types/three": "^0.185.4",
-    "canvas-confetti": "^1.9.4",
-    "lucide-angular": "^1.0.0",
-    "postcss": "^8.5.28",
-    "tailwindcss": "^4.3.3",
-    "three": "^0.185.1",
     "ws": "^8.18.3"
   },
   "devDependencies": {

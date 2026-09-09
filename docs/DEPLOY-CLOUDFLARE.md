@@ -101,7 +101,7 @@ Frontend memakai same-origin `/api` dan `/ws`, jadi konfigurasi klien hanya butu
 2. Cookie `session = sha256(OFFICE_TOKEN)`, HttpOnly + Secure + SameSite=Lax, 30 hari.
 3. Browser memanggil `GET /gateway?token=...` (atau POST dengan field `token`) untuk mendapatkan cookie.
 4. Worker menyet cookie lalu redirect 302 ke `/`.
-5. Dashboard frontend tidak melakukan redirect otomatis (anti flicker): bila 401, React menampilkan panel `AccessGate` (inline) yang menanyakan token.
+5. Dashboard frontend tidak melakukan redirect otomatis (anti flicker): bila 401, Angular menampilkan panel `AccessGate` (inline, `shared/auth/`) yang menanyakan token — `AuthService.unauthorized()` jadi sinyal, `AppComponent` menyaring layout di `@if`.
 
 ### Loopback (localhost/127.0.0.1) **bebas autentikasi** — ini khusus untuk sesi Pi di mesin yang sama.
 - Non-loopback (cloud, LAN) memerlukan cookie atau bearer.

@@ -31,13 +31,13 @@ cd ~/.pi/office
 
 ### 1. Install semua dependency
 
-Tiga lokasi `package.json`: root (server tools + wrangler), `server/` (ws), `dashboard/` (React dll).
+Tiga lokasi `package.json`: root (`ws` + `@libsql/client` + wrangler), `server/` (`ws` — satu-satunya dependensinya), `dashboard/` (Angular, Three.js, Tailwind v4, Zard UI).
 
 ```bash
 cd ~/.pi/office
 npm install                 # root: ws, @libsql/client; dev: wrangler
 cd server && npm install    # server: ws
-cd ../dashboard && npm install   # dashboard: react, three, vite, dsb.
+cd ../dashboard && npm install   # dashboard: @angular/*, three, tailwindcss v4, dsb.
 cd ..
 ```
 
@@ -50,7 +50,7 @@ npm --prefix . install && npm --prefix server install && npm --prefix dashboard 
 ### 2. Build dashboard
 
 ```bash
-npm run build      # = cd dashboard && vite build → dashboard/dist
+npm run build      # = cd dashboard && ng build --configuration production → dashboard/dist
 ```
 
 Wajib sebelum start hub — hub menyajikan dist ini.

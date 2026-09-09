@@ -37,7 +37,7 @@ Repo ini adalah **sumber kebenaran** untuk proyek pi-office: kode extension modu
 └─────────────┬───────────────────────────────┬────────────┘
               ▼ WS broadcast                  ▼ (mode cloud)
 ┌──────────────────────────────┐   ┌──────────────────────────────┐
-│ Dashboard React + Three.js   │   │ Cloudflare Worker + DO        │
+│ Dashboard Angular + Three.js │   │ Cloudflare Worker + DO        │
 │ http://127.0.0.1:4317        │   │ + Turso (libSQL)              │
 └──────────────────────────────┘   └──────────────────────────────┘
 ```
@@ -71,7 +71,7 @@ Lalu buka `http://127.0.0.1:4317` dan jalankan `pi` di mana saja — sesi Anda m
 | [docs/INSTALL.md](docs/INSTALL.md) | Instal dari nol: prasyarat, semua deps, build, run, test, troubleshooting |
 | [docs/EXTENSIONS.md](docs/EXTENSIONS.md) | **Pi extension office (global)**: cara pasang (`sync:extension`), cara kerja, redaksi, tool kustom, konfigurasi |
 | [docs/BACKEND.md](docs/BACKEND.md) | Hub: struktur file, REST API, WebSocket, event telemetry, kill safety, reaper, resolusi harga |
-| [docs/FRONTEND.md](docs/FRONTEND.md) | Dashboard React+Three.js: struktur, data flow socket, engine 3D, menu kopi, build |
+| [docs/FRONTEND.md](docs/FRONTEND.md) | Dashboard Angular 19 + Three.js: struktur, data flow socket, engine 3D terpecah, menu kopi, build |
 | [docs/DATABASE.md](docs/DATABASE.md) | Skema SQLite & Turso: tabel, indeks, migrasi ringan, backfill |
 | [docs/ORCA.md](docs/ORCA.md) | Integrasi Orca: identitas sesi, embed dashboard, multi-mesin |
 | [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md) | Deploy Worker + Durable Object + Turso, secret, beda perilaku lokal vs cloud |
@@ -79,9 +79,9 @@ Lalu buka `http://127.0.0.1:4317` dan jalankan `pi` di mana saja — sesi Anda m
 ## Isi Repo
 
 ```
-~/.pi/office/
+<repo office/>   (mis. ~/PROJECTS/office — salinan runtime di ~/.pi/office hasil clone/sync)
 ├── server/                  Backend hub (Node + SQLite + WS)
-├── dashboard/               Frontend (Vite + React + Three.js)
+├── dashboard/               Frontend (Angular 19 standalone + Tailwind v4 + Three.js)
 ├── cloudflare/worker.ts     Worker cloud (DO + Turso)
 ├── extension/               SUMBER extension Pi (modular; index, client, redact, ...)
 ├── tools/
@@ -103,8 +103,8 @@ Lalu buka `http://127.0.0.1:4317` dan jalankan `pi` di mana saja — sesi Anda m
 | `npm run sync:extension` | **Pasang pi-office ke global Pi** (`extension/*.ts` → `~/.pi/agent/extensions/pi-office.ts`) |
 | `npm run test:extension` | Verifikasi global extension (identitas, auth, redaksi rahasia) |
 | `npm run server` | Jalankan hub (foreground, `:4317`) |
-| `npm run dashboard` | Vite dev (HMR, `:5173`, proxy → 4317) |
-| `npm run dev` | `tools/run-dev.js`: hub + Vite sekaligus |
+| `npm run dashboard`  | `ng serve` Angular (HMR, `:4200`, proxy `/api`+`/ws` → 4317) |
+| `npm run dev`        | `tools/run-dev.js`: hub `:4317` + `ng serve` `:4200` sekaligus |
 | `npm run build` | Build dashboard → `dashboard/dist` |
 | `npm test` | E2E (WS + register + tool + billing, port 4318) |
 | `npm run simulate` | Kirim sesi palsu untuk demo |
