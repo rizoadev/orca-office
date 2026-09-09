@@ -34,9 +34,21 @@ pi                                     # buka sesi pi apa pun
 yang sedang berjalan** — tidak perlu restart. Endpoint Worker cloud sudah jadi bawaan paket, jadi
 yang perlu diisi hanya token. Dashboard-nya: `https://pi-office.hanirizo.workers.dev`.
 
-Paket dibangun dari source yang sama: `npm run pack:extension` (`npm pack --dry-run` untuk lihat
-isi tarball) dan `npm run publish:extension` (build → test → publish). Isinya
-`packaging/pi-office/pi-office.ts` — salinan identik dari `extensions-global/pi-office.ts`.
+Paket dibangun dari source yang sama lewat `tools/publish-package.js`:
+
+```bash
+npm run pack:extension            # build + npm pack --dry-run (lihat isi tarball)
+npm run publish:extension         # pagar penuh, TIDAK menerbitkan apa pun (dry-run)
+npm run publish:extension:live    # build → test → cek tarball → npm publish
+```
+
+`publish:extension` sengaja dry-run. Alasannya nyata: `npm publish --prefix packaging/pi-office`
+**tidak** memindahkan direktori publish — ia mem-pack `package.json` di cwd, jadi dari root repo
+perintah itu menerbitkan `orca-office` sebanyak 207 file dengan nama yang salah. Skrip menolak
+berjalan kecuali isi tarball persis `[package.json, pi-office.ts, README.md]`, nama & versi cocok,
+kedua bundle (`extensions-global/` dan `packaging/`) identik byte, dan root `package.json`
+berstatus `private: true`. Root juga sudah diganti nama jadi `orca-office` (mengikuti nama repo)
+sekaligus `private: true`, jadi kecelakaan yang sama tidak bisa terjadi dua kali.
 
 > **Jangan dua-duanya.** Kalau mesin punya salinan global hasil `sync:extension` **dan** paket
 > npm terpasang, Pi memuat keduanya dan tool `office_*` bentrok. Builder menyematkan
@@ -186,4 +198,4 @@ npm run pi:office        # pi -e extension/index.ts
 - Ubah source di `extension/*.ts` → `npm run sync:extension` (otomatis backup file global lama ke `*.bak-*`) → `npm run test:extension`.
 - Builder `tools/build-global-extension.js` menggabung modul sesuai urutan dependensi dan **menolak** duplikasi nama top-level / default export ganda — aman dari kesalahan gabung.
 - Banner hasil build: `GENERATED ... do not edit here` — edit di `extension/`, bukan di file global.
-- Naikkan versi paket npm di `packaging/pi-office/package.json` → `npm run publish:extension`. Builder menyematkan `OFFICE_EXTENSION_VERSION` dari manifest itu, dan `test:extension` menolak kalau stamp/version hilang, jadi tidak mungkin menerbitkan paket versi lama dari bundle basi.
+- Naikkan versi paket npm di `packaging/pi-office/package.json` → `npm run publish:extension` (cek pagar) → `npm run publish:extension:live`. Builder menyematkan `OFFICE_EXTENSION_VERSION` dari manifest itu, dan `test:extension` menolak kalau stamp/version hilang, jadi tidak mungkin menerbitkan paket versi lama dari bundle basi.

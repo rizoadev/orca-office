@@ -1,7 +1,7 @@
 {
-  "name": "pi-office",
-  "version": "1.0.0",
+  "name": "orca-office",
   "private": true,
+  "version": "1.0.0",
   "type": "module",
   "description": "ORCA24 Coworking Space — Observabilitas Realtime Sesi Indonesia & Sub-Agents",
   "scripts": {
@@ -16,10 +16,11 @@
     "simulate": "node tools/simulate-pi-session.js",
     "bundle:extension": "node tools/build-global-extension.js",
     "sync:extension": "node tools/build-global-extension.js --install",
-    "pack:extension": "node tools/build-global-extension.js && npm pack --prefix packaging/pi-office",
-    "publish:extension": "node tools/build-global-extension.js && node tools/test-global-extension.js && npm publish --prefix packaging/pi-office",
+    "pack:extension": "node tools/build-global-extension.js && (cd packaging/pi-office && npm pack --dry-run)",
+    "publish:extension": "node tools/publish-package.js --dry-run",
     "test:extension": "node tools/test-global-extension.js",
-    "pi:office": "pi -e extension/index.ts"
+    "pi:office": "pi -e extension/index.ts",
+    "publish:extension:live": "node tools/publish-package.js"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

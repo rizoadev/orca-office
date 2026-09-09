@@ -111,8 +111,9 @@ pi                       # sesi apa pun
 | Perintah | Arti |
 |---|---|
 | `npm run sync:extension` | **Pasang pi-office ke global Pi** (`extension/*.ts` → `~/.pi/agent/extensions/pi-office.ts`) — jalur mesin dev |
-| `npm run pack:extension` | Bangun bundle + `npm pack` di `packaging/pi-office/` (lihat isi tarball) |
-| `npm run publish:extension` | Build → `test:extension` → `npm publish` (butuh `npm login`) |
+| `npm run pack:extension` | Bangun bundle + `npm pack --dry-run` di `packaging/pi-office/` (lihat isi tarball) |
+| `npm run publish:extension` | **Cek pagar saja (dry-run)**: build → test → inspeksi tarball, tidak menerbitkan |
+| `npm run publish:extension:live` | Yang benar-benar `npm publish` (butuh `npm login`) |
 | `npm run test:extension` | Verifikasi global extension (identitas, auth, redaksi rahasia) |
 | `npm run server` | Jalankan hub (foreground, `:4317`) |
 | `npm run dashboard`  | `ng serve` Angular (HMR, `:4200`, proxy `/api`+`/ws` → 4317) |
