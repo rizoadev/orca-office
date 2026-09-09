@@ -54,6 +54,17 @@ function classify(value) {
   return kinds;
 }
 
+/**
+ * `resultField()` di hub MENYIMPAN penanda `{"redacted":true,"output_chars":N}` saat body
+ * memang tidak dikirim. Itu bukan kebocoran — dihitung sebagai "terisi" membuat audit selalu
+ * menyala merah dan `--apply` menghapus penanda yang berguna untuk dashboard.
+ */
+function hasRawResultBody(value) {
+  if (!value || value === 'null' || value === '{}') return false;
+  if (value.startsWith('{\"redacted\":')) return false;
+  return true;
+}
+
 const rows = (await client.execute(
   'SELECT id, session_id, tool_name, input_json, result_json FROM tool_calls'
 )).rows;
@@ -78,7 +89,7 @@ for (const row of rows) {
   if (before !== after) {
     dirty++;
     updates.push({ id: row.id, input: wanted, dropResult: true });
-  } else if (row.result_json && row.result_json !== 'null' && row.result_json !== '{}') {
+  } else if (hasRawResultBody(row.result_json)) {
     // Input-nya sudah pas, tapi body hasil tool masih utuh → tetap harus dibuang.
     updates.push({ id: row.id, input, dropResult: true });
   }
@@ -97,8 +108,8 @@ if (jwt) console.log(`   (JWT terdeteksi di ${jwt.found} baris)`);
 
 // `result_json`: di jalur loopback dulu body hasil tool ikut tersimpan — inilah kanal
 // paling rawan, karena output `cat .env` / `npm whoami` masuk apa adanya.
-const withResult = rows.filter((r) => r.result_json && r.result_json !== 'null' && r.result_json !== '{}');
-console.log(`\n📊 tool_calls dengan result_json terisi: ${withResult.length} — sensor tidak pernah menyimpan body ini`);
+const withResult = rows.filter((r) => hasRawResultBody(r.result_json));
+console.log(`\n📊 tool_calls dengan body result MENTAH: ${withResult.length} (penanda {"redacted":…} tidak dihitung)`);
 
 if (!APPLY) {
   console.log(`\n↷ Audit saja: ${updates.length} baris akan ditulis ulang. Tambah --apply untuk menjalankan.`);
