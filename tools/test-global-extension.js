@@ -154,6 +154,15 @@ assert.equal(saved.endpoint, 'https://office.example/api/event');
 assert.equal(saved.enabled, true);
 if (process.platform !== 'win32') {
   assert.equal(fs.statSync(configFile).mode & 0o777, 0o600, 'config.json harus 0600 — isinya token');
+
+  // Regresi nyata: writeFileSync's `mode` hanya berlaku saat file DIBUAT. File yang sudah ada
+  // (dibuat versi extension lama / editor / tool lain) menahan mode-nya, jadi token bisa
+  // tertinggal terbaca semua pengguna di mesin bersama. Uji keadaan itu, bukan cuma jalur mulus.
+  fs.chmodSync(configFile, 0o644);
+  assert.equal(fs.statSync(configFile).mode & 0o777, 0o644, 'pra-kondisi: file 644');
+  await office.handler('connect https://office.example/api/event token-putar', authed.ctx);
+  const after = fs.statSync(configFile).mode & 0o777;
+  assert.equal(after, 0o600, `config.json yang sudah ada harus di-chmod 0600 saat connect, dapat ${after.toString(8)}`);
 }
 
 // client.ts caches endpoint at module load; refreshOfficeConfig() is what makes a connect

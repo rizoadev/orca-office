@@ -69,7 +69,11 @@ export function writeOfficeExtensionConfig(patch: Partial<OfficeExtensionConfig>
   const file = officeConfigPath();
   const next = { ...(readRawOfficeConfig() ?? {}), ...patch };
   fs.mkdirSync(path.dirname(file), { recursive: true });
+  // ⚠️ `mode` di writeFileSync HANYA dipakai saat file DIBUAT. File config yang sudah ada
+  // (mis. dibuat versi lama, atau dibuat tool lain) menahan mode-nya — token bisa tertinggal
+  // 644: terbaca oleh semua pengguna di mesin bersama. Jadi chmod eksplisit setiap tulis.
   fs.writeFileSync(file, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch { /* filesystem tanpa bit mode (Windows) */ }
   return next;
 }
 
