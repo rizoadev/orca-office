@@ -75,13 +75,23 @@ try {
   run('npm', ['publish', '--access', 'public'], PKG_DIR);
 } catch (err) {
   const out = `${err.stdout || ''}${err.stderr || ''}`;
-  if (/ENEEDAUTH|401|403/.test(out)) {
-    console.error(`\n❌ Registry menolak: mesin ini belum punya hak terbit untuk ${manifest.name}.`);
-    console.error('   npm login            (lalu ulangi: npm run publish:extension:live)');
-    console.error('   atau untuk scope baru: buat org npm, lalu ubah "name" di packaging/pi-office/package.json');
-    process.exit(1);
+  // JANGAN menutupi sebabnya dengan pesan karangan sendiri. Kasus nyata: registry menolak
+  // karena 2FA, guard ini mencetak "belum punya hak terbit, jalankan npm login" — saran
+  // yang salah persis ketika akun sudah terautentikasi. Baris npm error-nya yang dipercaya.
+  const registryLines = out.split('\n').filter((l) => /^npm error/.test(l)).slice(0, 3);
+  console.error(`\n❌ ${manifest.name}@${manifest.version} tidak terbit. Kata registry:`);
+  for (const line of registryLines) console.error('   ' + line.replace(/^npm error\s*/, ''));
+  if (!registryLines.length) console.error('   (tidak terbaca, output mentah 400 karakter terakhir):\n   ' + out.slice(-400));
+
+  const hints = [];
+  if (/Two-factor|bypass 2fa|one-time pass/i.test(out)) {
+    hints.push('butuh 2FA: `npm publish --access public --otp=123456` (kode authenticator, berlaku ~30 detik)');
+    hints.push('atau: npmjs.com → Access Tokens → granular token dengan "bypass 2FA" untuk automation');
   }
-  throw err;
+  if (/ENEEDAUTH|401/.test(out)) hints.push('belum login: `npm login` (cek: `npm whoami`)');
+      if (/@/.test(manifest.name)) hints.push('scope harus sama dengan username npm (akun di mesin ini: rizoa) — atau pakai nama unscoped');
+  if (hints.length) { console.error('   Kemungkinan jalan keluar:'); for (const h of hints) console.error('   • ' + h); }
+  process.exit(1);
 }
 
 console.log(`\n🎉 Terbit. Uji di mesin lain:  pi install npm:${manifest.name}@${manifest.version}`);
