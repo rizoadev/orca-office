@@ -20,9 +20,13 @@ wrangler   # dipakai via `npm run cf:*`, bukan global wajib
 Turso: `~/.turso/turso` — buat db & token:
 
 ```bash
-turso db create pi-office
-turso db show pi-office --url          # → libsql://pi-office-<you>.turso.io
-turso db tokens create pi-office       # → token rahasia
+# ⚠️ JANGAN buat DB baru bernama `pi-office`. Kantor ini sudah punya satu DB kanonik:
+#    libsql://office-rizoadev.aws-ap-northeast-1.turso.io  (yang dipakai hub Node lokal).
+#    DB kedua = split-brain: Worker dan hub menulis ke tempat berbeda, dan tiap dashboard
+#    hanya melihat separuh kenyataan. Ini BENAR-BENAR terjadi dan ketahuan dari probe:
+#    POST tool.call via Worker tidak muncul di office-rizoadev.
+turso db show office-rizoadev --url
+turso db tokens create office-rizoadev   # token untuk DB yang SAMA
 ```
 
 ## Konfigurasi
@@ -42,8 +46,8 @@ main = "cloudflare/worker.ts"
 ## Secret (jangan pernah dilettakkan di file repo)
 
 ```bash
-wrangler secret put TURSO_DATABASE_URL   # libsql://...
-wrangler secret put TURSO_AUTH_TOKEN     # token turso
+wrangler secret put TURSO_DATABASE_URL   # wajib = DB kanonik office-rizoadev
+wrangler secret put TURSO_AUTH_TOKEN     # token utk DB yang sama
 wrangler secret put OFFICE_TOKEN          # Bearer penuh: baca state/billing/kill + tulis
 wrangler secret put OFFICE_INGEST_TOKEN   # opsional: tulis-saja utk /api/event — aman dibagi
 ```
