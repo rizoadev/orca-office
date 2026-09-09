@@ -44,10 +44,13 @@ main = "cloudflare/worker.ts"
 ```bash
 wrangler secret put TURSO_DATABASE_URL   # libsql://...
 wrangler secret put TURSO_AUTH_TOKEN     # token turso
-wrangler secret put OFFICE_TOKEN         # opsional: Bearer untuk POST /api/event
+wrangler secret put OFFICE_TOKEN          # Bearer penuh: baca state/billing/kill + tulis
+wrangler secret put OFFICE_INGEST_TOKEN   # opsional: tulis-saja utk /api/event — aman dibagi
 ```
 
-Proteksi endpoint telemetry: setelah `OFFICE_TOKEN` diset di Worker, tiap `/api/event` harus menyertakan `Authorization: Bearer <token>` yang sama — dan mesin pengirim harus `export OFFICE_TOKEN=<token>`.
+Proteksi endpoint telemetry: setelah `OFFICE_TOKEN` diset di Worker, tiap `/api/event` harus menyertakan `Authorization: Bearer <token>` yang sama — dan mesin pengirim harus `export OFFICE_TOKEN=<token>` (atau `/office connect <token>`).
+
+**Sebaiknya pakai `OFFICE_INGEST_TOKEN`.** Extension kini terpasang lewat `pi install npm:@rizoadev/pi-office`, artinya kredensial akan kamu bagikan ke mesin/orang lain. `OFFICE_TOKEN` memberi pembacanya `/api/state`, `/api/billing`, `/ws`, dan kill — jadi satu bocoran berarti seluruh isi kantor. `OFFICE_INGEST_TOKEN` diterima **hanya** di `POST /api/event`: boleh menulis telemetry, tidak bisa membaca apa pun. Tanpa secret itu, perilaku persis seperti sebelumnya.
 
 ## Build & deploy
 
@@ -77,7 +80,7 @@ Frontend memakai same-origin `/api` dan `/ws`, jadi konfigurasi klien hanya butu
 | `GET /api/health` | ✅ | ✅ (`target: cloudflare-worker`) |
 | `GET /api/state` | ✅ | ✅ |
 | `GET /api/billing` | ✅ | ✅ |
-| `POST /api/event` | ✅ (+ token opsional) | ✅ (token via `OFFICE_TOKEN`) |
+| `POST /api/event` | ✅ (+ token opsional) | ✅ (`OFFICE_TOKEN` atau `OFFICE_INGEST_TOKEN`) |
 | `POST /api/sessions/:id/kill` | SIGTERM + offline | offline only (tidak bisa SIGTERM) |
 | `GET /api/billing/quote` · `POST /api/billing/feed/refresh` | ✅ (Pricing lokal) | tidak ada — Worker memakai harga dari cost yang direkam Pi / Turso |
 | Static dashboard | dari disk | dari assets binding |

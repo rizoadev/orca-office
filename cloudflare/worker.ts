@@ -11,6 +11,8 @@ type Env = {
   TURSO_DATABASE_URL: string;
   TURSO_AUTH_TOKEN: string;
   OFFICE_TOKEN?: string;
+  /** Write-only credential for POST /api/event; see isAuthorizedIngest(). */
+  OFFICE_INGEST_TOKEN?: string;
 };
 
 type TelemetryEvent = {
@@ -143,6 +145,18 @@ async function isAuthorized(request: Request, env: Env): Promise<boolean> {
   if (header === `Bearer ${env.OFFICE_TOKEN}`) return true;
   const cookie = readCookie(request, SESSION_COOKIE);
   return cookie !== null && cookie === (await sha256Hex(env.OFFICE_TOKEN));
+}
+
+/**
+ * Ingest is the endpoint every installed laptop hits on every Pi event, so it needs a
+ * credential that is safe to hand out. Without OFFICE_INGEST_TOKEN, behaviour is exactly
+ * what it always was (OFFICE_TOKEN or a /gateway cookie). With it, a teammate can post
+ * telemetry without being able to read other people's sessions, billing, or kill them.
+ */
+async function isAuthorizedIngest(request: Request, env: Env): Promise<boolean> {
+  if (await isAuthorized(request, env)) return true;
+  if (!env.OFFICE_INGEST_TOKEN) return false;
+  return (request.headers.get('authorization') || '') === `Bearer ${env.OFFICE_INGEST_TOKEN}`;
 }
 
 function gatewayPage(message?: string): Response {
@@ -693,9 +707,14 @@ export default {
         if (request.method === 'GET' && url.pathname === '/api/health') {
           return json({ status: 'ok', target: 'cloudflare-worker', time: now() });
         }
-        // Everything past this point returns office contents, not just liveness.
-        if (!(await isAuthorized(request, env))) {
-          return json({ error: 'Unauthorized', hint: 'buka /gateway untuk masuk dengan token' }, 401);
+        // Everything past this point returns office contents, not just liveness. Ingest is the
+        // one exception: it writes, so the write-only credential is enough there.
+        const isIngest = request.method === 'POST' && url.pathname === '/api/event';
+        const authorized = isIngest
+          ? await isAuthorizedIngest(request, env)
+          : await isAuthorized(request, env);
+        if (!authorized) {
+          return json({ error: 'Unauthorized', hint: isIngest ? 'butuh token (bawaan kantor, atau OFFICE_INGEST_TOKEN tulis-saja)' : 'buka /gateway untuk masuk dengan token' }, 401);
         }
         if (request.method === 'GET' && url.pathname === '/api/state') {
           return json(await getFullState(client));

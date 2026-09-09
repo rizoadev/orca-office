@@ -10,6 +10,7 @@ Repo ini adalah **sumber kebenaran** untuk proyek pi-office: kode extension modu
 
 - 🪑 **Kantor 3D coffee-shop** — 14 kursi, tiap sesi jadi bubble agent dengan avatar & nama Indonesia.
 - 🌐 **Extension Pi terpasang GLOBAL** — semua sesi `pi` di mesin otomatis terdaftar; `npm run sync:extension` membangun `extension/*.ts` menjadi `~/.pi/agent/extensions/pi-office.ts`.
+- 📦 **Install satu baris di mesin lain** — `pi install npm:@rizoadev/pi-office` lalu `/office connect <token>`. Endpoint Worker sudah bawaan paket; token tidak (dan tidak boleh) ikut terbawa.
 - 🛡 **Redaksi rahasia** — payload tool diringkas & rahasia disensor sebelum keluar mesin (hub non-loopback).
 - 👥 **Roster tim & hierarki sub-agent** — sesi induk → sub-agent terlihat sebagai anggota tim baru.
 - ⚡ **Realtime tool-call feed, stream LLM, dan log terminal** via WebSocket.
@@ -60,6 +61,14 @@ npm run sync:extension      # pasang pi-office extension ke global Pi
 
 Lalu buka `http://127.0.0.1:4317` dan jalankan `pi` di mana saja — sesi Anda muncul sebagai bubble di kursi coffee-shop.
 
+### Laptop / mesin lain (tanpa repo, tanpa hub lokal)
+
+```bash
+pi install npm:@rizoadev/pi-office
+pi                       # sesi apa pun
+/office connect <token>  # satu kali; endpoint Worker sudah bawaan paket
+```
+
 > Set-up otomatis penuh: `./scripts/bootstrap.sh` (prasyarat → deps → build → config → machine-id → sync extension → test → start).
 
 ---
@@ -90,6 +99,7 @@ Lalu buka `http://127.0.0.1:4317` dan jalankan `pi` di mana saja — sesi Anda m
 ├── scripts/
 │   ├── bootstrap.sh         Setup idempotent satu perintah
 │   └── install-extensions.sh  Salin extension tambahan (soul-anchor, footer, orca-*)
+├── packaging/pi-office/     PI-PACKET npm: @rizoadev/pi-office (bundle + manifest, hasil `pack:extension`)
 ├── extensions-global/       Extension Pi lain yang dipakai mesin (referensi repo)
 ├── start-dev.sh · stop-dev.sh  Manage hub background
 ├── config.example.json · .env.example · wrangler.toml · plan.yaml
@@ -100,7 +110,9 @@ Lalu buka `http://127.0.0.1:4317` dan jalankan `pi` di mana saja — sesi Anda m
 
 | Perintah | Arti |
 |---|---|
-| `npm run sync:extension` | **Pasang pi-office ke global Pi** (`extension/*.ts` → `~/.pi/agent/extensions/pi-office.ts`) |
+| `npm run sync:extension` | **Pasang pi-office ke global Pi** (`extension/*.ts` → `~/.pi/agent/extensions/pi-office.ts`) — jalur mesin dev |
+| `npm run pack:extension` | Bangun bundle + `npm pack` di `packaging/pi-office/` (lihat isi tarball) |
+| `npm run publish:extension` | Build → `test:extension` → `npm publish` (butuh `npm login`) |
 | `npm run test:extension` | Verifikasi global extension (identitas, auth, redaksi rahasia) |
 | `npm run server` | Jalankan hub (foreground, `:4317`) |
 | `npm run dashboard`  | `ng serve` Angular (HMR, `:4200`, proxy `/api`+`/ws` → 4317) |

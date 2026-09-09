@@ -1,0 +1,37 @@
+{
+  "name": "@rizoadev/pi-office",
+  "version": "1.1.0",
+  "description": "Pi extension: daftarkan sesi Pi CLI-mu ke kantor virtual 3D ORCA24 — persona Indonesia, feed tool-call realtime, stream LLM, dan tagihan token per model.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "observability",
+    "office",
+    "telemetry"
+  ],
+  "license": "MIT",
+  "author": "rizoadev",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rizoadev/orca-office.git",
+    "directory": "packaging/pi-office"
+  },
+  "homepage": "https://pi-office.hanirizo.workers.dev",
+  "pi": {
+    "extensions": [
+      "./pi-office.ts"
+    ]
+  },
+  "files": [
+    "pi-office.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

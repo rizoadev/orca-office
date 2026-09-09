@@ -16,6 +16,8 @@
     "simulate": "node tools/simulate-pi-session.js",
     "bundle:extension": "node tools/build-global-extension.js",
     "sync:extension": "node tools/build-global-extension.js --install",
+    "pack:extension": "node tools/build-global-extension.js && npm pack --prefix packaging/pi-office",
+    "publish:extension": "node tools/build-global-extension.js && node tools/test-global-extension.js && npm publish --prefix packaging/pi-office",
     "test:extension": "node tools/test-global-extension.js",
     "pi:office": "pi -e extension/index.ts"
   },

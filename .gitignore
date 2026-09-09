@@ -36,3 +36,6 @@ dashboard/dist/
 .DS_Store
 *.swp
 *~
+
+# Artefak npm pack utk paket pi-office (regenerable via `npm run pack:extension`)
+*.tgz

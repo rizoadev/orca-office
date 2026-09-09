@@ -1,6 +1,13 @@
 import { getPersonaForSession, getSessionDisplayName, getSubagentPersona, shortSessionSuffix } from './indonesian-names.ts';
 import { getOfficeClientIdentity } from './identity.ts';
-import { sendOfficeEvent } from './client.ts';
+import { sendOfficeEvent, officeTelemetryTarget, refreshOfficeConfig } from './client.ts';
+import {
+  DEFAULT_CLOUD_ENDPOINT,
+  DEFAULT_LOCAL_ENDPOINT,
+  officeHubOrigin,
+  readRawOfficeConfig,
+  writeOfficeExtensionConfig,
+} from './config.ts';
 import { getLastPiCliPrompt, summarizePrompt, tailText, extractAssistantVisibleText, extractToolCallName } from '../lib/session-utils.ts';
 
 interface ToolEventPayload {
@@ -20,6 +27,7 @@ export default function (pi: any) {
   let liveResponseText = '';
   let liveThinkingChars = 0;
   let lastStreamSentAt = 0;
+  let onboardingHintShown = false;
   const activeToolCalls = new Map<string, number>();
   const clientIdentity = getOfficeClientIdentity('pi');
 
@@ -111,6 +119,16 @@ export default function (pi: any) {
         is_subagent: 0,
         ...clientIdentity
       });
+
+      // A remote hub without a token answers 401, which is otherwise invisible: every
+      // sendOfficeEvent() swallows its error by design. Say it out loud once per session.
+      if (!onboardingHintShown) {
+        const target = officeTelemetryTarget();
+        if (!target.authed && !target.endpoint.includes('127.0.0.1')) {
+          onboardingHintShown = true;
+          ctx?.ui?.notify?.(`☕ Kantor butuh token — jalankan /office connect <token>. Target: ${target.endpoint}`, 'info');
+        }
+      }
     } catch {
       // safe fallback
     }
@@ -294,6 +312,83 @@ export default function (pi: any) {
       // safe fallback
     }
   });
+
+  // === PERINTAH /office — onboard mesin lain tanpa menyunting JSON ===
+  if (typeof pi.registerCommand === 'function') {
+    pi.registerCommand('office', {
+      description: 'Kantor virtual: status | connect <token> | url <endpoint> | local | cloud | off | on | test',
+      handler: async (args: string, ctx: any) => {
+        const [verb = 'status', ...rest] = String(args || '').trim().split(/\s+/);
+        // Explicit else, not `notify() || console.log()`: ui.notify returns undefined, so the
+        // `||` form would print the same text to stdout and corrupt the TUI.
+        const say = (text: string, level: any = 'info') => {
+          if (typeof ctx?.ui?.notify === 'function') ctx.ui.notify(text, level);
+          else console.log(text);
+        };
+
+        switch (verb) {
+          case 'connect': {
+            // `connect <token>` pakai endpoint bawaan paket; `connect <url> <token>` untuk hub lain.
+            const [maybeUrl, maybeToken] = rest;
+            const token = rest.length > 1 ? maybeToken : maybeUrl;
+            const endpoint = rest.length > 1 ? maybeUrl : undefined;
+            if (!token) return say('Pemakaian: /office connect <token> atau /office connect <url-hub> <token>', 'error');
+            writeOfficeExtensionConfig({ ...(endpoint ? { endpoint } : {}), token, enabled: true });
+            refreshOfficeConfig();
+            const ok = await sendOfficeEvent('session.register', {
+              session_id: currentSessionId, name: currentDisplayName, pid: process.pid, task: 'handshake /office connect',
+              ...clientIdentity,
+            });
+            return say(ok
+              ? `✅ Terhubung ke ${officeTelemetryTarget().endpoint} — mesin "${clientIdentity.machine_name}" masuk kantor.`
+              : `⚠️ Config tersimpan, tapi kirim gagal (${officeTelemetryTarget().lastError}). Cek token/URL.`, ok ? 'info' : 'error');
+          }
+          case 'url': {
+            if (!rest[0]) return say('Pemakaian: /office url <endpoint /api/event>', 'error');
+            writeOfficeExtensionConfig({ endpoint: rest[0] });
+            refreshOfficeConfig();
+            return say(`🌐 Endpoint → ${rest[0]}`);
+          }
+          case 'local':
+            writeOfficeExtensionConfig({ endpoint: DEFAULT_LOCAL_ENDPOINT, token: process.env.OFFICE_TOKEN || readRawOfficeConfig()?.token || '' });
+            refreshOfficeConfig();
+            return say(`🏠 Hub lokal → ${DEFAULT_LOCAL_ENDPOINT}`);
+          case 'cloud':
+            writeOfficeExtensionConfig({ endpoint: DEFAULT_CLOUD_ENDPOINT });
+            refreshOfficeConfig();
+            return say(`☁️ Worker cloud → ${DEFAULT_CLOUD_ENDPOINT}`);
+          case 'off':
+            writeOfficeExtensionConfig({ enabled: false });
+            refreshOfficeConfig();
+            return say('🔇 Telemetry kantor dimatikan di mesin ini.');
+          case 'on':
+            writeOfficeExtensionConfig({ enabled: true });
+            refreshOfficeConfig();
+            return say('🔊 Telemetry kantor aktif kembali.');
+          case 'test': {
+            const ok = await sendOfficeEvent('log.append', {
+              session_id: currentSessionId, level: 'info', source: 'office-test', message: '🔔 Uji koneksi dari /office test',
+            });
+            const t = officeTelemetryTarget();
+            return say(ok ? `✅ ${t.endpoint} menjawab.` : `❌ ${t.endpoint}: ${t.lastError || 'gagal'}`, ok ? 'info' : 'error');
+          }
+          default: {
+            const t = officeTelemetryTarget();
+            const origin = officeHubOrigin(t.endpoint);
+            return say([
+              '☕ ORCA24 office',
+              `   endpoint : ${t.endpoint}${t.enabled ? '' : '  (telemetry OFF — /office on)'}`,
+              `   dashboard: ${origin ?? '?'}`,
+              `   token    : ${t.authed ? 'ya (bearer)' : 'BELUM ADA → /office connect <token>'}`,
+              `   redaksi  : ${t.redacting ? 'aktif (payload disensor sebelum keluar mesin)' : 'nonaktif (loopback)'}`,
+              `   mesin    : ${clientIdentity.machine_name} · ${clientIdentity.machine_id}`,
+              `   kirim    : ${t.lastSentAt ? new Date(t.lastSentAt).toLocaleTimeString() : 'belum ada'}${t.lastError ? ` · terakhir gagal: ${t.lastError}` : ''}`,
+            ].join('\n'));
+          }
+        }
+      }
+    });
+  }
 
   // === CUSTOM TOOLS UNTUK KANTOR PI ===
   if (typeof pi.registerTool === 'function') {

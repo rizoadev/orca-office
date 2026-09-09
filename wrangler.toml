@@ -21,4 +21,5 @@ new_sqlite_classes = ["OfficeRoom"]
 #   wrangler secret put TURSO_DATABASE_URL
 #   wrangler secret put TURSO_AUTH_TOKEN
 # Optional telemetry auth:
-#   wrangler secret put OFFICE_TOKEN
+#   wrangler secret put OFFICE_TOKEN           # baca + tulis (dashboard & semua mesin)
+#   wrangler secret put OFFICE_INGEST_TOKEN    # tulis-saja utk POST /api/event (aman dibagi ke teammate)
