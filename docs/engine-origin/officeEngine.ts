@@ -1114,36 +1114,10 @@ export class OfficeEngine {
     corridorFloorGlow.position.set(9.1, 0.018, -2.9);
     this.scene.add(corridorFloorGlow);
 
-    // Sconce sudut tembok office × toilet — sisi luar partisi lorong (menghadap ruang
-    // duduk) selama ini gelap karena sconce lorong terhalang partisi. Tingginya dibatasi
-    // 2.4: partisi cuma setinggi PART_H (3.2), jadi strip 3.75 ala dinding utama akan
-    // menembus atap lorong.
-    const cornerSconce = box(0.08, 2.4, 0.11, cornerLightMat, 7.42, 1.7, -6);
-    cornerSconce.castShadow = false;
-    cornerSconce.receiveShadow = false;
-
-    const cornerSconceHalo = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 2.6), cornerGlowMat.clone());
-    cornerSconceHalo.position.set(7.35, 1.7, -6);
-    cornerSconceHalo.rotation.y = Math.PI / 2;
-    this.scene.add(cornerSconceHalo);
-
-    const cornerSconceFloorGlow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.85, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0xff9a3c,
-        transparent: true,
-        opacity: 0.14,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
-    );
-    cornerSconceFloorGlow.rotation.x = -Math.PI / 2;
-    cornerSconceFloorGlow.position.set(6.95, 0.018, -6);
-    this.scene.add(cornerSconceFloorGlow);
-
-    const cornerSconceLight = new THREE.PointLight(0xffbf78, 1.5, 8, 1.8);
-    cornerSconceLight.position.set(6.85, 2.05, -6);
-    this.scene.add(cornerSconceLight);
+    // Lampu sisi toilet (tembok kiri partisi lorong) sekarang terpasang tertutup
+    // di balik wall panel — lihat blok "Wall panel penutup lampu" di bagian lorong
+    // WC di bawah. Strip emissive mentah sebelumnya memang sengaja dihapus: karena
+    // ini area toilet, fitting harus IP44 (diffuser opal), bukan bar terbuka.
 
     // Storefront glass. Bukaan pintu (x[4.75, 7.25]) dipotong dari panel: tanpa ini,
     // daun pintu yang mengayun ke luar menyapu bidang kaca di z=7.55.
@@ -1681,13 +1655,165 @@ export class OfficeEngine {
     box(PART_T, PART_H, 5.2, partM, 7.6, PART_H / 2, -4.1);
     box(PART_T + 0.05, 0.09, 5.2, partTrimM, 7.6, 0.045, -4.1);
 
-    // Dinding depan WC dengan lubang pintu di x[8.3, 9.35].
-    box(0.7, PART_H, PART_T, partM, 7.95, PART_H / 2, -4.45);
-    box(0.55, PART_H, PART_T, partM, 9.625, PART_H / 2, -4.45);
-    box(1.05, 0.55, PART_T, partM, 8.825, 2.925, -4.45);
+    // ── Wall panel penutup lampu: tembok kiri sisi toilet ──────────────────────
+    // Muka luar partisi lorong dulu ada strip emissive mentah ('lampu gantung' kelihatan)
+    // — tak cocok untuk toilet. Sekarang dinding pelosok dibungkus panel keramik
+    // large-format sampai ke atap (flush dengan partisi), dan lampunya jadi fitting
+    // tertutup IP44: alu frame + diffuser opal, cahaya keluar lembing. Karena ini
+    // area toilet, panel justru berperan sekaligus sebagai 'tutup' lampu.
+    const TOILET_PART_OUTER = 7.6 - PART_T / 2;              // 7.49 — muka luar partisi
+    const PANEL_THK = 0.05;
+    const PANEL_FACE = TOILET_PART_OUTER - PANEL_THK;        // 7.44 — muka depan panel
+    const TOILET_LIGHT_Z = -6;
+    const TOILET_LIGHT_Y = 1.78;
+
+    // Panel keramik: veins halus + 3 slab horizontal dengan grout. Canvas aspect
+    // (1024:607) sama persis dengan aspek muka panel (5.16:3.03) → 1:1, tak terdistorsi.
+    const panelTex = this.createCanvasTex(1024, 607, (g, w, h) => {
+      g.fillStyle = '#d4d9e3';
+      g.fillRect(0, 0, w, h);
+      const veins = (n: number, a0: number, alpha: number, lo: number, hi: number, col: string) => {
+        for (let i = 0; i < n; i++) {
+          g.strokeStyle = `rgba(${col},${alpha})`;
+          g.lineWidth = lo + Math.random() * (hi - lo);
+          g.beginPath();
+          const a = a0 + (i * Math.PI * 2) / n + (Math.random() - 0.5) * 0.2;
+          const len = 0.55 + Math.random() * 0.4;
+          g.moveTo(w / 2, h * 0.78);
+          for (let s = 0; s <= 24; s++) {
+            const t = s / 24;
+            g.lineTo(w * (0.5 + Math.sin(a) * t * len * (0.5 + Math.sin(s * 0.7) * 0.2)), h * (0.78 - Math.cos(a) * t * len * 0.45));
+            g.lineTo(w * (0.5 + Math.sin(a + 0.9) * t * len * (0.5 + Math.cos(s * 0.6) * 0.2)), h * (0.78 - Math.cos(a + 0.9) * t * len * 0.45));
+          }
+          g.stroke();
+        }
+      };
+      veins(9, 0.6, 0.18, 1.2, 2.6, '120,128,140');
+      veins(5, 2.0, 0.11, 1.0, 2.0, '90,98,108');
+      // Grout 3 slab (large format) + bayangan tipis di setiap gesekan.
+      g.strokeStyle = 'rgba(110,120,130,0.45)';
+      g.lineWidth = 3;
+      g.beginPath();
+      for (const y of [h * 0.34, h * 0.66]) {
+        g.moveTo(0, y);
+        g.lineTo(w, y);
+      }
+      g.stroke();
+      g.fillStyle = 'rgba(0,0,0,0.04)';
+      g.fillRect(0, h * 0.34 - 1, w, 2);
+      g.fillRect(0, h * 0.66 - 1, w, 2);
+    }, 1, 1);
+    const panelMat = new THREE.MeshStandardMaterial({ map: panelTex, roughness: 0.88, metalness: 0.0 });
+
+    // Helper: ubin keramik untuk muka dinding apa pun. Aspect canvas = WorldZ : WorldY
+    // supaya grout & slab terskala 1:1 di dunia (large-format ~1,2 m).
+    const drawPanelTex = (Wz: number, Hy: number) => {
+      const pw = 1024;
+      const ph = Math.max(256, Math.round((1024 * Hy) / Wz));
+      return this.createCanvasTex(pw, ph, (g, w, h) => {
+        g.fillStyle = '#d4d9e3';
+        g.fillRect(0, 0, w, h);
+        const veins = (n: number, a0: number, alpha: number, lo: number, hi: number, col: string) => {
+          for (let i = 0; i < n; i++) {
+            g.strokeStyle = `rgba(${col},${alpha})`;
+            g.lineWidth = lo + Math.random() * (hi - lo);
+            g.beginPath();
+            const a = a0 + (i * Math.PI * 2) / n + (Math.random() - 0.5) * 0.2;
+            const len = 0.55 + Math.random() * 0.4;
+            g.moveTo(w / 2, h * 0.78);
+            for (let s = 0; s <= 24; s++) {
+              const t = s / 24;
+              g.lineTo(w * (0.5 + Math.sin(a) * t * len * (0.5 + Math.sin(s * 0.7) * 0.2)), h * (0.78 - Math.cos(a) * t * len * 0.45));
+              g.lineTo(w * (0.5 + Math.sin(a + 0.9) * t * len * (0.5 + Math.cos(s * 0.6) * 0.2)), h * (0.78 - Math.cos(a + 0.9) * t * len * 0.45));
+            }
+            g.stroke();
+          }
+        };
+        veins(9, 0.6, 0.18, 1.2, 2.6, '120,128,140');
+        veins(5, 2.0, 0.11, 1.0, 2.0, '90,98,108');
+        // Grout horizontal + bayangan tipis tiap gesekan (1,2 m slab → tinggi 3,2 → 3 bar).
+        g.strokeStyle = 'rgba(110,120,130,0.45)';
+        g.lineWidth = 3;
+        g.beginPath();
+        for (const f of [1, 2, 3]) {
+          const y = (h * f) / 4;
+          g.moveTo(0, y);
+          g.lineTo(w, y);
+        }
+        g.stroke();
+        g.fillStyle = 'rgba(0,0,0,0.04)';
+        for (const f of [1, 2, 3]) g.fillRect(0, (h * f) / 4 - 1, w, 2);
+      }, 1, 1);
+    };
+
+    const panelClad = box(PANEL_THK, 3.03, 5.16, panelMat, PANEL_FACE + PANEL_THK / 2, 0.1 + 3.03 / 2, -4.1);
+
+    // Fitting lampu tertutup (IP44) yang dipasang di mukanya: alu housing ring yang
+    // sedikit lebih besar dari diffuser, lalu diffuser kaca frosted (transmission) yang
+    // jadi 'tutup' lampu — cahaya LED di belakang menyebar lewat kaca buram, bukan bar.
+    const aluM = M(0x525764, 0.24, 0.86);
+    const frostedM = new THREE.MeshPhysicalMaterial({
+      color: 0xeef4fe,
+      roughness: 0.72,            // frosting: kabur, bukan kaca bening
+      metalness: 0.0,
+      transmission: 0.55,         // tembus cahaya → terbaca sebagai kaca
+      thickness: 0.02,
+      ior: 1.5,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      emissive: 0xffd7b0,
+      emissiveIntensity: 0.7,     // cahaya menyebar keluar lewat frosted
+      envMapIntensity: 0.3,
+    });
+    const pW = 0.36;
+    const pH = 2.0;
+    const pD = 0.028;
+    const housing = box(pD, pH, pW, aluM, PANEL_FACE - 0.025, TOILET_LIGHT_Y, TOILET_LIGHT_Z);
+    // Kaca frosted duduk ~1 cm lebih depan dari muka housing → klip-in frame alu.
+    const gD = 0.02;
+    const diffuser = box(gD, pH - 0.16, pW - 0.04, frostedM, PANEL_FACE - 0.025 - gD / 2 - 0.01, TOILET_LIGHT_Y, TOILET_LIGHT_Z);
+
+    // Soft glow di depan kaca frosted → efek cove, bukan bar emissive mentah.
+    const panelHalo = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 1.98), cornerGlowMat.clone());
+    panelHalo.material.opacity = 0.11;
+    panelHalo.rotation.y = -Math.PI / 2;
+    panelHalo.position.set(PANEL_FACE - 0.09, TOILET_LIGHT_Y, TOILET_LIGHT_Z);
+    this.scene.add(panelHalo);
+
+    // Sumber cahaya ruangan tetap: point light + soft floor glow di depan fitting.
+    const panelLight = new THREE.PointLight(0xffd7b0, 1.6, 8, 1.8);
+    panelLight.position.set(PANEL_FACE - 0.12, TOILET_LIGHT_Y + 0.16, TOILET_LIGHT_Z);
+    this.scene.add(panelLight);
+    const panelFloorGlow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.85, 32),
+      new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, opacity: 0.11, side: THREE.DoubleSide, depthWrite: false })
+    );
+    panelFloorGlow.rotation.x = -Math.PI / 2;
+    panelFloorGlow.position.set(6.9, 0.018, TOILET_LIGHT_Z);
+    this.scene.add(panelFloorGlow);
+
+    // ── Sisi toilet lainnya dipanel seragam (keramik large-format) ────────────────
+    // Agar ruang WC terasa satu set: dinding depan (pintu), dinding kanan, dan
+    // dinding belakang diubah dari partM cokelat polos jadi panel keramik yang sama
+    // dengan tembok kiri. Kusen pintu tetap partTrimM biar kontras sebagai bingkai.
+    const panelFrontM = new THREE.MeshStandardMaterial({ map: drawPanelTex(2.3, 3.2), roughness: 0.88, metalness: 0.0 });
+    const panelRightM = new THREE.MeshStandardMaterial({ map: drawPanelTex(2.25, 3.2), roughness: 0.88, metalness: 0.0 });
+    const panelBackM = new THREE.MeshStandardMaterial({ map: drawPanelTex(2.3, 3.2), roughness: 0.88, metalness: 0.0 });
+
+    // Dinding depan WC dengan lubang pintu di x[8.3, 9.35] — panel keramik.
+    box(0.55, PART_H, PANEL_THK, panelFrontM, 7.95, PART_H / 2, -4.45);
+    box(0.4, PART_H, PANEL_THK, panelFrontM, 9.625, PART_H / 2, -4.45);
+    box(1.05, 0.55, PANEL_THK, panelFrontM, 8.825, 2.925, -4.45);
     // Kusen pintu.
     box(0.08, 2.72, PART_T + 0.05, partTrimM, 8.3, 1.36, -4.45);
     box(0.08, 2.72, PART_T + 0.05, partTrimM, 9.35, 1.36, -4.45);
+
+    // Dinding kanan ruang WC (sisi luar = x=10.1, partisi terhadap unit sebelah).
+    box(PANEL_THK, PART_H, 2.25, panelRightM, 9.9 + 0.005, PART_H / 2, -5.575);
+
+    // Dinding belakang ruang WC (z=-6.9, sisi luar ruangan).
+    box(2.3, PART_H, PANEL_THK, panelBackM, 8.75, PART_H / 2, -6.9 + 0.005);
 
     // Daun pintu dibuka ke dalam ruang WC.
     const wcDoor = new THREE.Group();
@@ -1764,7 +1890,7 @@ export class OfficeEngine {
       g.closePath();
       g.fill();
       g.fillRect(w * 0.4, h * 0.64, w * 0.34, h * 0.08);
-    }, 0.66, 0.36, 7.47, 2.12, -1.95);
+    }, 0.66, 0.36, PANEL_FACE - 0.015, 2.12, -1.95);
     dirSign.rotation.y = -Math.PI / 2;
 
     // Porcelain di dalam ruang WC: kloset, wastafel, cermin.
