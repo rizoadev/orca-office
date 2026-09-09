@@ -27,7 +27,13 @@ stop_recorded() {
       *server/src/index.js*)
         kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
         echo "🛑 Menghentikan hub lama (pid $pid)"
-        sleep 1
+        # Tunggu port lepas SEBELUM melanjut. Tanpa ini, proses baru lahir lalu mati
+        # EADDRINUSE sementara health-check di bawah tetap hijau — menjawab hub lama
+        # yang belum mati. Kegagalannya jadi tidak kelihatan, dan itu yang terjadi.
+        for _ in $(seq 1 40); do
+          ss -ltn 2>/dev/null | grep -q ":$PORT " || break
+          sleep 0.25
+        done
         ;;
       *) echo "⚠️  $1 berisi pid $pid yang bukan hub office — dibiarkan." ;;
     esac
@@ -45,13 +51,23 @@ fi
 
 OFFICE_HOST="$OFFICE_HOST" OFFICE_PORT="$PORT" NODE_DISABLE_COMPILE_CACHE=1 \
   setsid nohup node --env-file=.env server/src/index.js < /dev/null > "$OFFICE_DIR/backend.log" 2>&1 &
+HUB_PID=$!
+STARTED_AT=$(date +%s)
 
-# Health check: node butuh beberapa ratus ms untuk buka port + init SQLite
+# Health check. `healthy` saja TIDAK CUKUP: itu hanya berarti "ada yang menjawab di
+# :$PORT", dan yang menjawab bisa jadi hub lama yang gagal dibunuh. Karena itu setelah
+# hijau kita wajib pencocokan PID (di bawah) dan penolakan eksplisit kalau beda.
 healthy=""
-for _ in $(seq 1 25); do
+for _ in $(seq 1 40); do
   if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/api/health"; then
     healthy=1
     break
+  fi
+  # Proses baru mati duluan (EADDRINUSE, DB error) → jangan tunggu 16 detik.
+  if [ ! -d "/proc/$HUB_PID" ]; then
+    echo "❌ Proses hub baru (pid $HUB_PID) keluar sebelum sehat — backend.log:"
+    tail -8 "$OFFICE_DIR/backend.log" || true
+    exit 1
   fi
   sleep 0.4
 done
@@ -69,8 +85,15 @@ listener_pid() {
 
 if [ -n "$healthy" ]; then
   pid=$(listener_pid || true)
-  if [ -n "$pid" ]; then echo "$pid" > "$OFFICE_DIR/.backend.pid"; fi
-  echo "🟢 ORCA24 Hub sehat di http://$OFFICE_HOST:$PORT (Angular dashboard + API + WS, pid ${pid:-?})"
+  # Inti perbaikan: port harus dipegang OLEH proses yang baru kita lahirkan.
+  if [ -n "$pid" ] && [ "$pid" != "$HUB_PID" ]; then
+    echo "❌ :$PORT dipegang pid $pid, bukan hub yang baru start ($HUB_PID)."
+    echo "   Ada proses hub lain di luar .backend.pid — hentikan dia dulu (atau lewat dashboard Kill)."
+    [ -d "/proc/$HUB_PID" ] && kill -TERM "$HUB_PID" 2>/dev/null || true
+    exit 1
+  fi
+  echo "${pid:-$HUB_PID}" > "$OFFICE_DIR/.backend.pid"
+  echo "🟢 ORCA24 Hub sehat di http://$OFFICE_HOST:$PORT (Angular dashboard + API + WS, pid ${pid:-$HUB_PID})"
 else
   echo "❌ Hub tidak merespons — cek $OFFICE_DIR/backend.log"
   tail -5 "$OFFICE_DIR/backend.log" || true
