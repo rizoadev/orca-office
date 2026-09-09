@@ -43,8 +43,8 @@ if [ ! -f "$OFFICE_DIR/dashboard/dist/browser/index.html" ] && \
   (cd "$OFFICE_DIR/dashboard" && npx ng build --configuration production >/dev/null)
 fi
 
-OFFICE_HOST="$OFFICE_HOST" OFFICE_PORT="$PORT" \
-  setsid nohup node server/src/index.js < /dev/null > "$OFFICE_DIR/backend.log" 2>&1 &
+OFFICE_HOST="$OFFICE_HOST" OFFICE_PORT="$PORT" NODE_DISABLE_COMPILE_CACHE=1 \
+  setsid nohup node --env-file=.env server/src/index.js < /dev/null > "$OFFICE_DIR/backend.log" 2>&1 &
 
 # Health check: node butuh beberapa ratus ms untuk buka port + init SQLite
 healthy=""

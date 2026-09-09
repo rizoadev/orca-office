@@ -4,19 +4,25 @@
 // session start — so every session that predates billing would show an empty receipt.
 // Pi already wrote the token + cost numbers into ~/.pi/agent/sessions/*.jsonl, so we read
 // them once, per line, with a dedupe key that makes re-running this tool harmless.
+//
+// Turso: every DB call is async now, so this runs top-level await and needs the env file
+// (`npm run backfill:usage` passes `--env-file=.env`).
 import fs from 'node:fs';
 import path from 'node:path';
-import { OfficeDB, getSessionLogFiles } from '../server/src/db.js';
+import { OfficeDB } from '../server/src/db.js';
+import { getSessionLogFiles } from '../lib/session-utils.ts';
 
 const db = new OfficeDB();
+await db._ready;
+
 const only = process.argv[2] || null;
 
 const sessions = only
-  ? db.db.prepare('SELECT id, name, cwd FROM sessions WHERE id = ?').all(only)
-  : db.db.prepare('SELECT id, name, cwd FROM sessions').all();
+  ? await db.db.prepare('SELECT id, name, cwd FROM sessions WHERE id = ?').all(only)
+  : await db.db.prepare('SELECT id, name, cwd FROM sessions').all();
 
 if (!sessions.length) {
-  console.log('Tidak ada sesi di office.db untuk di-backfill.');
+  console.log('Tidak ada sesi di Turso untuk di-backfill.');
   process.exit(0);
 }
 
@@ -38,22 +44,23 @@ for (const session of sessions) {
     }
     filesRead++;
 
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
+    // for…of, not forEach: the body awaits a DB write per receipt.
+    for (const [index, line] of lines.entries()) {
+      if (!line.trim()) continue;
       let event;
       try {
         event = JSON.parse(line);
       } catch {
-        return;
+        continue;
       }
       const message = event?.message;
-      if (event?.type !== 'message' || message?.role !== 'assistant') return;
+      if (event?.type !== 'message' || message?.role !== 'assistant') continue;
 
       const usage = message.usage;
       const totalTokens = Number(usage?.totalTokens) || 0;
-      if (!usage || totalTokens <= 0) return;
+      if (!usage || totalTokens <= 0) continue;
 
-      const receipt = db.recordUsage({
+      const receipt = await db.recordUsage({
         session_id: session.id,
         model: message.model || 'pi-model',
         provider: message.provider || null,
@@ -73,13 +80,13 @@ for (const session of sessions) {
       } else {
         skipped++;
       }
-    });
+    }
   }
 
   console.log(`  ${session.name || session.id} → ${mine} struk baru (${files.length} log)`);
 }
 
-const bill = db.getBilling();
+const bill = await db.getBilling();
 console.log('\n☕ Tagihan setelah backfill:');
 console.log(`   ${filesRead} log dibaca · ${inserted} struk baru · ${skipped} sudah tercatat sebelumnya`);
 console.log(`   ${bill.totals.users} tamu · ${bill.totals.models} menu · ${bill.totals.turns} seduh`);

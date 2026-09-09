@@ -13,6 +13,11 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_DIR = path.join(ROOT, 'extension');
 
+// Modules that live outside ./extension but are shared with the server and the
+// maintenance scripts. They must be inlined here too: the bundle is a single file
+// that Pi loads on its own, so a relative import out of ./extension would dangle.
+const SHARED = ['lib/session-utils.ts'];
+
 // Dependency order: leaf modules first, the Pi hook wiring last. Module-scope consts
 // (client.ts resolves endpoint/token at load) must not reference a later declaration.
 const MODULES = [
@@ -94,6 +99,15 @@ function build() {
   const bareImports = new Set();
   const chunks = [];
   const declarations = [];
+
+  // Shared modules first — they are leaves, nothing in the bundle depends on order.
+  for (const rel of SHARED) {
+    const source = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    const { code, bareImports: imports } = transform(source, rel);
+    for (const line of imports) bareImports.add(line);
+    declarations.push(...topLevelNames(code, rel));
+    chunks.push(`// \u2500\u2500\u2500 ${rel} ${'\u2500'.repeat(Math.max(0, 62 - rel.length))}\n${code}`);
+  }
 
   for (const file of MODULES) {
     const source = fs.readFileSync(path.join(SRC_DIR, file), 'utf8');

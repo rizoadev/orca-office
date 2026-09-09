@@ -75,6 +75,12 @@ function int(value: unknown, fallback: number | null = null): number | null {
   return Number.isInteger(n) ? n : fallback;
 }
 
+/**
+ * Deliberately NOT the shared `lib/session-utils.ts` version, which walks up the real
+ * filesystem looking for `.git`. A Worker has no local filesystem, and the `cwd` it sees
+ * belongs to whichever remote machine posted the event — so the last path segment is all
+ * that can be resolved here. Leave this one alone if you are de-duplicating.
+ */
 function projectNameFromCwd(cwd: string | null): string | null {
   if (!cwd) return null;
   const parts = cwd.split(/[\\/]+/).filter(Boolean);

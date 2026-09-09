@@ -68,7 +68,7 @@ const METHOD_OWNER = {
   initStreetFront: 'street',
   initWallAc: 'ac', setAcMode: 'ac', updateAc: 'ac',
   setMenuBoard: 'menu', drawMenuBoard: 'menu',
-  addSeatItems: 'seatItems', removeSeatItems: 'seatItems',
+  addSeatItems: 'seatItems', removeSeatItems: 'seatItems', revealSeatItems: 'seatItems',
   initOfficeEnvironment: 'shop',
   // LANTAI mushola (ruang: saf, slot, geometri tangga) — tidak tahu apa-apa soal rute.
   isMusholaBound: 'mezz', freeMusholaSpot: 'mezz', stairDescentFrom: 'mezz',

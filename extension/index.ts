@@ -1,8 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { getPersonaForSession, getSessionDisplayName, getSubagentPersona, shortSessionSuffix } from './indonesian-names.ts';
 import { getOfficeClientIdentity } from './identity.ts';
 import { sendOfficeEvent } from './client.ts';
+import { getLastPiCliPrompt, summarizePrompt, tailText, extractAssistantVisibleText, extractToolCallName } from '../lib/session-utils.ts';
 
 interface ToolEventPayload {
   toolName: string;
@@ -10,114 +9,6 @@ interface ToolEventPayload {
   input?: Record<string, any>;
   details?: any;
   isError?: boolean;
-}
-
-function summarizePrompt(prompt: string, maxLength = 80): string {
-  const cleanPrompt = prompt.trim().replace(/\s+/g, ' ');
-  return cleanPrompt.length > maxLength ? cleanPrompt.slice(0, maxLength - 3) + '...' : cleanPrompt;
-}
-
-function getPiSessionsRoot(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || '';
-  return process.env.PI_SESSIONS_DIR || path.join(home, '.pi', 'agent', 'sessions');
-}
-
-function encodeCwdForPiSessions(cwd: string): string {
-  return `--${path.resolve(cwd).replace(/^\/+/, '').replace(/\/+$/g, '').replace(/\/+/g, '-')}--`;
-}
-
-function getSessionLogFiles(cwd: string, sessionId?: string | null): string[] {
-  const root = getPiSessionsRoot();
-  const primaryDir = path.join(root, encodeCwdForPiSessions(cwd));
-  const dirs = fs.existsSync(primaryDir)
-    ? [primaryDir]
-    : fs.existsSync(root)
-      ? fs.readdirSync(root)
-        .filter((entry) => entry.startsWith('--'))
-        .map((entry) => path.join(root, entry))
-      : [];
-
-  const files = dirs
-    .flatMap((dir) => {
-      try {
-        return fs.readdirSync(dir)
-          .filter((file) => file.endsWith('.jsonl'))
-          .map((file) => path.join(dir, file));
-      } catch {
-        return [];
-      }
-    });
-
-  const scopedFiles = sessionId
-    ? files.filter((file) => path.basename(file).includes(sessionId))
-    : files;
-
-  return scopedFiles
-    .map((file) => ({ file, mtimeMs: fs.statSync(file).mtimeMs }))
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, 50)
-    .map(({ file }) => file);
-}
-
-function extractTextContent(content: any): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-
-  return content
-    .map((item) => {
-      if (typeof item === 'string') return item;
-      if (item?.type === 'text' && typeof item.text === 'string') return item.text;
-      return '';
-    })
-    .filter(Boolean)
-    .join('\n');
-}
-
-function getLastPiCliPrompt(cwd: string, sessionId?: string | null): string | null {
-  try {
-    for (const file of getSessionLogFiles(cwd, sessionId)) {
-      const lines = fs.readFileSync(file, 'utf8').trim().split('\n').reverse();
-      for (const line of lines) {
-        try {
-          const event = JSON.parse(line);
-          if (event?.type !== 'message' || event?.message?.role !== 'user') continue;
-
-          const prompt = extractTextContent(event.message.content).trim();
-          if (prompt) return summarizePrompt(prompt);
-        } catch {
-          // Ignore malformed JSONL lines from an actively-written session log.
-        }
-      }
-    }
-  } catch {
-    // Fail-safe: the extension must never block Pi CLI startup.
-  }
-
-  return null;
-}
-
-function tailText(text: string, maxLength = 180): string {
-  const clean = text.trim().replace(/\s+/g, ' ');
-  return clean.length > maxLength ? '…' + clean.slice(clean.length - maxLength + 1) : clean;
-}
-
-function extractAssistantVisibleText(message: any): string {
-  if (!Array.isArray(message?.content)) return '';
-
-  return message.content
-    .filter((item: any) => item?.type === 'text' && typeof item.text === 'string')
-    .map((item: any) => item.text)
-    .join(' ')
-    .trim();
-}
-
-function extractToolCallName(event: any): string | null {
-  const update = event?.assistantMessageEvent;
-  if (typeof update?.toolCall?.name === 'string') return update.toolCall.name;
-
-  const idx = update?.contentIndex;
-  const block = Number.isInteger(idx) ? update?.partial?.content?.[idx] || event?.message?.content?.[idx] : null;
-  return typeof block?.name === 'string' ? block.name : null;
 }
 
 export default function (pi: any) {

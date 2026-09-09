@@ -12,7 +12,7 @@
     "cf:dev": "npm run build && wrangler dev",
     "cf:deploy": "npm run build && wrangler deploy",
     "test": "node tools/test-e2e.js",
-    "backfill:usage": "node tools/backfill-usage.js",
+    "backfill:usage": "node --env-file=.env tools/backfill-usage.js",
     "simulate": "node tools/simulate-pi-session.js",
     "bundle:extension": "node tools/build-global-extension.js",
     "sync:extension": "node tools/build-global-extension.js --install",

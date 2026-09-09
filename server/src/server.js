@@ -124,7 +124,7 @@ export function createOfficeServer(options = {}) {
 
     // GET /api/state
     if (req.method === 'GET' && url.pathname === '/api/state') {
-      const state = db.getFullState();
+      const state = await db.getFullState();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(state));
       return;
@@ -133,7 +133,7 @@ export function createOfficeServer(options = {}) {
     // GET /api/billing — coffee-shop bill: tokens + USD per guest and per brew.
     if (req.method === 'GET' && url.pathname === '/api/billing') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(db.getBilling()));
+      res.end(JSON.stringify(await db.getBilling()));
       return;
     }
 
@@ -172,7 +172,7 @@ export function createOfficeServer(options = {}) {
     if (req.method === 'POST' && url.pathname.startsWith('/api/sessions/') && url.pathname.endsWith('/kill')) {
       const parts = url.pathname.split('/');
       const sessionId = parts.length === 5 ? decodeURIComponent(parts[3]) : '';
-      const result = killSession(db, hub, sessionId);
+      const result = await killSession(db, hub, sessionId);
       sendJson(res, result.status, result.payload);
       return;
     }
@@ -181,10 +181,10 @@ export function createOfficeServer(options = {}) {
     if (req.method === 'POST' && url.pathname === '/api/event') {
       let body = '';
       req.on('data', chunk => { body += chunk; });
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const event = JSON.parse(body || '{}');
-          handleTelemetryEvent(db, hub, event);
+          await handleTelemetryEvent(db, hub, event);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ received: true, type: event.type }));
         } catch (err) {
@@ -280,12 +280,12 @@ function assertSafeKillTarget(pid) {
   return { ok: true };
 }
 
-function killSession(db, hub, sessionId) {
+async function killSession(db, hub, sessionId) {
   if (!sessionId) {
     return { status: 400, payload: { ok: false, error: 'Session ID kosong.' } };
   }
 
-  const session = db.getSession(sessionId);
+  const session = await db.getSession(sessionId);
   if (!session) {
     return { status: 404, payload: { ok: false, error: 'Session tidak ditemukan.' } };
   }
@@ -321,7 +321,7 @@ function killSession(db, hub, sessionId) {
     }
   }
 
-  db.endSession(sessionId);
+  await db.endSession(sessionId);
   const log = {
     session_id: sessionId,
     level: signalSent ? 'warn' : 'info',
@@ -329,7 +329,7 @@ function killSession(db, hub, sessionId) {
     message: `🛑 Kill agent: ${session.name}. ${message}`,
     created_at: Date.now()
   };
-  db.appendLog(log);
+  await db.appendLog(log);
   hub.broadcast('session_ended', { session_id: sessionId });
   hub.broadcast('log_appended', log);
 
@@ -345,13 +345,13 @@ function killSession(db, hub, sessionId) {
   };
 }
 
-function handleTelemetryEvent(db, hub, event) {
+async function handleTelemetryEvent(db, hub, event) {
   const { type, payload } = event;
   if (!type || !payload) return;
 
   switch (type) {
     case 'session.register': {
-      const session = db.upsertSession({
+      const session = await db.upsertSession({
         id: payload.session_id,
         name: payload.name,
         role: payload.role,
@@ -368,7 +368,7 @@ function handleTelemetryEvent(db, hub, event) {
         ...sessionIdentityFromPayload(payload, payload.is_subagent ? 'subagent' : 'pi')
       });
 
-      db.appendLog({
+      await db.appendLog({
         session_id: session.id,
         level: 'info',
         source: 'pi-session',
@@ -380,7 +380,7 @@ function handleTelemetryEvent(db, hub, event) {
     }
 
     case 'session.heartbeat': {
-      const session = db.upsertSession({
+      const session = await db.upsertSession({
         id: payload.session_id,
         task: payload.task,
         status: payload.status || 'working',
@@ -392,8 +392,8 @@ function handleTelemetryEvent(db, hub, event) {
     }
 
     case 'session.end': {
-      db.endSession(payload.session_id);
-      db.appendLog({
+      await db.endSession(payload.session_id);
+      await db.appendLog({
         session_id: payload.session_id,
         level: 'info',
         source: 'pi-session',
@@ -405,7 +405,7 @@ function handleTelemetryEvent(db, hub, event) {
 
     case 'team.register': {
       // Subagent registered as office team member
-      const subagent = db.upsertSession({
+      const subagent = await db.upsertSession({
         id: payload.subagent_id,
         name: payload.name,
         role: payload.role || 'Sub-Agent Specialist',
@@ -421,7 +421,7 @@ function handleTelemetryEvent(db, hub, event) {
         ...sessionIdentityFromPayload(payload, 'subagent')
       });
 
-      db.appendLog({
+      await db.appendLog({
         session_id: subagent.id,
         level: 'info',
         source: 'subagent',
@@ -440,9 +440,9 @@ function handleTelemetryEvent(db, hub, event) {
         input: payload.input,
         created_at: Date.now()
       };
-      db.recordToolCall(tc);
+      await db.recordToolCall(tc);
 
-      db.appendLog({
+      await db.appendLog({
         session_id: payload.session_id,
         level: 'debug',
         source: 'tool_call',
@@ -462,7 +462,7 @@ function handleTelemetryEvent(db, hub, event) {
         is_error: payload.is_error ? 1 : 0,
         duration_ms: payload.duration_ms || 0
       };
-      db.recordToolCall(tc);
+      await db.recordToolCall(tc);
 
       hub.broadcast('tool_completed', tc);
       break;
@@ -482,13 +482,13 @@ function handleTelemetryEvent(db, hub, event) {
     case 'session.usage': {
       // Why: one receipt per LLM call. No log line and no session upsert here — turns
       // arrive many times per minute and would drown the feed and the heartbeat.
-      const receipt = db.recordUsage(payload);
-      hub.broadcast('usage_recorded', db.getBilling());
+      const receipt = await db.recordUsage(payload);
+      hub.broadcast('usage_recorded', await db.getBilling());
       return receipt;
     }
 
     case 'log.append': {
-      db.appendLog({
+      await db.appendLog({
         session_id: payload.session_id,
         level: payload.level || 'info',
         source: payload.source || 'pi-cli',
@@ -506,7 +506,7 @@ function handleTelemetryEvent(db, hub, event) {
     }
 
     case 'task.update': {
-      const session = db.upsertSession({
+      const session = await db.upsertSession({
         id: payload.session_id,
         task: payload.task,
         status: payload.status || 'working',
@@ -514,7 +514,7 @@ function handleTelemetryEvent(db, hub, event) {
         ...sessionIdentityFromPayload(payload)
       });
 
-      db.appendLog({
+      await db.appendLog({
         session_id: payload.session_id,
         level: 'info',
         source: 'task',
