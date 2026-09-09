@@ -116,7 +116,23 @@ Event keluar (broadcast ke semua client):
 | `log_appended` | `log.append` | LogEntry object |
 | `task_updated` | `task.update` | Session object |
 
-### 2.4 Keamanan & Session Lifecycle
+### 2.4 State Kode: Committed vs Working Tree
+
+| State | DB Driver | db.js | server.js |
+|-------|-----------|-------|-----------|
+| **HEAD (komit)** | `node:sqlite` `DatabaseSync` (sync) | 747 baris, sync | 332 baris, sync |
+| **Working tree** | `@libsql/client` (Turso/cloud, async) | 850+ baris, async + wrapper | `await` pada semua panggilan db |
+
+Working tree saat ini (`server/src/db.js` + `server/src/server.js`) mengandung **Turso migration** oleh sesi Pi lain:
+- `createTursoClient()` wrapper meniru API `node:sqlite` (`prepare().run/get/all()`) di atas `@libsql/client`.
+- Semua method `OfficeDB` diubah menjadi `async`.
+- `server.js` menambahkan `await` pada `/api/state`, `/api/billing`, `/api/billing/quote`, `killSession`, `getFullState`, `getBilling`.
+
+Ini adalah jembatan menuju deployment edge (Cloudflare Worker + Durable Object).  
+Hub yang berjalan di `:4317` saat ini masih menggunakan kode **committed** (node:sqlite).  
+Perubahan working tree akan aktif setelah restart hub.
+
+### 2.5 Keamanan & Session Lifecycle
 
 - **Auth**: `OFFICE_TOKEN` → `Authorization: Bearer` atau cookie `session=<SHA-256>`.
 - **Loopback bypass**: `127.0.0.1` / `::1` tanpa token.
@@ -231,6 +247,34 @@ Sub-agent: sessions.parent_session_id → sessions.id (ref ke sesi induk)
 - Sumber: `pricing.js` (tabel lokal), `pricing-portkey.js` (API Portkey), `pricing-remote.js` (feed bulk).
 - `cost_source` di `usage_events`: `table` (tertinggi otoritas) → `feed` → `reported` → `none`.
 - `cost_rank` numerik menggantikan `MAX(cost_source)` agar agregasi jujur.
+
+### 3.6 Turso Migration (Working Tree)
+
+Working tree saat ini (`server/src/db.js`) berisi wrapper `@libsql/client` yang meniru API `node:sqlite`:
+
+```js
+function createTursoClient() {
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+  // ...
+  return {
+    exec(sql) { return client.execute(sql); },
+    batch(stmts) { return client.batch(stmts); },
+    prepare(sql) {
+      return {
+        run(...args) { return client.execute(sql, args); },
+        get(...args) { return client.execute(sql, args).rows[0]; },
+        all(...args) { return client.execute(sql, args).rows; },
+      };
+    },
+  };
+}
+```
+
+Semua method `OfficeDB` menjadi `async`. `server.js` menambahkan `await` pada semua panggilan.  
+Ini memungkinkan hub berjalan di atas Turso (libSQL cloud) tanpa mengubah logic query —  
+namun schema dan indexing tetap sama. Deployment edge (`cloudflare/worker.ts`) menggunakan  
+Durable Object SQLite + Turso sebagai sumber data yang sama.
 
 ---
 
