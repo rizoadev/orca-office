@@ -77,7 +77,7 @@ try {
   const out = `${err.stdout || ''}${err.stderr || ''}`;
   if (/ENEEDAUTH|401|403/.test(out)) {
     console.error(`\n❌ Registry menolak: mesin ini belum punya hak terbit untuk ${manifest.name}.`);
-    console.error('   npm login            (lalu ulangi: npm run publish:extension)');
+    console.error('   npm login            (lalu ulangi: npm run publish:extension:live)');
     console.error('   atau untuk scope baru: buat org npm, lalu ubah "name" di packaging/pi-office/package.json');
     process.exit(1);
   }
