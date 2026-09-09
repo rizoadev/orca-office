@@ -22,7 +22,9 @@
     "pi:office": "pi -e extension/index.ts",
     "publish:extension:live": "node tools/publish-package.js",
     "audit:telemetry": "node --env-file=.env tools/scrub-telemetry.js",
-    "scrub:telemetry": "node --env-file=.env tools/scrub-telemetry.js --apply"
+    "scrub:telemetry": "node --env-file=.env tools/scrub-telemetry.js --apply",
+    "release:git": "node tools/release-git-package.js",
+    "release:git:live": "node tools/release-git-package.js --push"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
