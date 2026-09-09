@@ -25,7 +25,7 @@ extension/                 ← sumber modular (repo ini)
 ### Mesin lain (rekomendasi): satu baris dari npm
 
 ```bash
-pi install npm:@rizoadev/pi-office      # pasang extension (satu file, nol dependency)
+pi install npm:pi-office      # pasang extension (satu file, nol dependency)
 pi                                     # buka sesi pi apa pun
 /office connect <token-kantor>         # satu kali per mesin
 ```

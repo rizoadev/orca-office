@@ -50,7 +50,7 @@ wrangler secret put OFFICE_INGEST_TOKEN   # opsional: tulis-saja utk /api/event 
 
 Proteksi endpoint telemetry: setelah `OFFICE_TOKEN` diset di Worker, tiap `/api/event` harus menyertakan `Authorization: Bearer <token>` yang sama — dan mesin pengirim harus `export OFFICE_TOKEN=<token>` (atau `/office connect <token>`).
 
-**Sebaiknya pakai `OFFICE_INGEST_TOKEN`.** Extension kini terpasang lewat `pi install npm:@rizoadev/pi-office`, artinya kredensial akan kamu bagikan ke mesin/orang lain. `OFFICE_TOKEN` memberi pembacanya `/api/state`, `/api/billing`, `/ws`, dan kill — jadi satu bocoran berarti seluruh isi kantor. `OFFICE_INGEST_TOKEN` diterima **hanya** di `POST /api/event`: boleh menulis telemetry, tidak bisa membaca apa pun. Tanpa secret itu, perilaku persis seperti sebelumnya.
+**Sebaiknya pakai `OFFICE_INGEST_TOKEN`.** Extension kini terpasang lewat `pi install npm:pi-office`, artinya kredensial akan kamu bagikan ke mesin/orang lain. `OFFICE_TOKEN` memberi pembacanya `/api/state`, `/api/billing`, `/ws`, dan kill — jadi satu bocoran berarti seluruh isi kantor. `OFFICE_INGEST_TOKEN` diterima **hanya** di `POST /api/event`: boleh menulis telemetry, tidak bisa membaca apa pun. Tanpa secret itu, perilaku persis seperti sebelumnya.
 
 ## Build & deploy
 

@@ -17,7 +17,7 @@ export type OfficeExtensionConfig = {
 /**
  * Office default when a machine has no config at all.
  *
- * Why cloud-first: a fresh `pi install npm:@rizoadev/pi-office` on another laptop has no
+ * Why cloud-first: a fresh `pi install npm:pi-office` on another laptop has no
  * ~/.pi/office/config.json, and the old loopback fallback meant it silently posted to a hub
  * that does not exist there. Pointing at the deployed Worker makes the package work with zero
  * setup for a member of this office. A stranger's install just gets a 401 and no telemetry —

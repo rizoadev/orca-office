@@ -1,5 +1,5 @@
 {
-  "name": "@rizoadev/pi-office",
+  "name": "pi-office",
   "version": "1.2.0",
   "description": "Pi extension: daftarkan sesi Pi CLI-mu ke kantor virtual 3D ORCA24 — persona Indonesia, feed tool-call realtime, stream LLM, dan tagihan token per model.",
   "keywords": [

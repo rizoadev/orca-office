@@ -7,7 +7,7 @@ tugas aktif, feed tool-call realtime, stream respons LLM, dan tagihan token per 
 ## Pasang
 
 ```bash
-pi install npm:@rizoadev/pi-office
+pi install npm:pi-office
 ```
 
 Selesai. Semua sesi `pi` di mesin itu sekarang otomatis terdaftar ke kantor — di laptop mana pun,

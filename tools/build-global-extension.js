@@ -30,7 +30,7 @@ const MODULES = [
 ];
 
 const REPO_BUNDLE = path.join(ROOT, 'extensions-global', 'pi-office.ts');
-// Publishable pi-package: `pi install npm:@rizoadev/pi-office` unpacks to
+// Publishable pi-package: `pi install npm:pi-office` unpacks to
 // ~/.pi/agent/npm/... and loads ./pi-office.ts from there. The bundle is emitted here too so
 // the tarball is always exactly the code that runs on this machine.
 const PACKAGE_DIR = path.join(ROOT, 'packaging', 'pi-office');
@@ -177,7 +177,7 @@ function build() {
 //
 // Office Extension — global Pi telemetry bridge to the ORCA24 office hub.
 // Sends machine identity, and redacts tool payloads whenever the hub is not loopback.
-// Install on another machine: pi install npm:@rizoadev/pi-office
+// Install on another machine: pi install npm:pi-office
 
 export const OFFICE_EXTENSION_VERSION = '${version}';
 `;
@@ -192,7 +192,7 @@ fs.mkdirSync(path.dirname(REPO_BUNDLE), { recursive: true });
 fs.writeFileSync(REPO_BUNDLE, out);
 console.log(`✅ Bundle repo     → ${REPO_BUNDLE} (${lines} baris)`);
 
-// Tarball content: `pi install npm:@rizoadev/pi-office` memuat berkas ini, bukan
+// Tarball content: `pi install npm:pi-office` memuat berkas ini, bukan
 // extensions-global/. Ditulis dalam run yang sama supaya keduanya tidak pernah beda.
 fs.mkdirSync(PACKAGE_DIR, { recursive: true });
 fs.writeFileSync(PACKAGE_BUNDLE, out);
