@@ -92,7 +92,7 @@ export function createOfficeServer(options = {}) {
   const db = new OfficeDB(options.dbPath);
   
   const server = http.createServer(async (req, res) => {
-    // CORS headers for local Vite dev server & sample.html
+    // CORS headers (dipertahankan untuk akses non-loopback yang melewati gateway)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');

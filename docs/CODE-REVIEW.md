@@ -127,7 +127,7 @@ Dan `isLoopbackEndpoint` (`redact.ts:52`) menganggap `0.0.0.0` = loopback → kl
 - `sanitizeCommand` menghancurkan pemisah: `git pull && export KEY=…` tampil sebagai `cat x export KEY=[redacted]` — jangan buang `&&`/`;`, ganti jadi ` ; `.
 - `tools/build-global-extension.js` menulis ke `extensions-global/pi-office.ts` **tanpa peduli argumen posisi** — `node tools/build-global-extension.js /tmp/x.ts` diam-diam menimpa file tracked. Perlu `--out` atau tolak arg tak dikenal.
 - Banner hasil bundle menyebut "Source of truth: `~/.pi/office/extension/*.ts`" — hardcoded, dan salah untuk repo.
-- `sample.html` ter-commit dua kali, byte-identik (root + `dashboard/public/`, 55 KB × 2).
+- `sample.html` pernah ter-commit dua kali (root + `dashboard/public/`). Root copy sudah dihapus.
 - `tools/test-global-extension.js` hardcode `/home/rizoa/...` — pakai tmpdir.
 - `config.example.json` tidak punya field `endpoint`/`token` padahal `docs/EXTENSIONS.md` mendeskripsikannya.
 - Doc drift lain: "Loopback bebas autentikasi" ditulis di tabel cloud, padahal worker tidak punya pengecualian itu.
