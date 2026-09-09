@@ -3,13 +3,19 @@ import { WebSocket } from 'ws';
 import { createOfficeServer } from '../server/src/server.js';
 import fs from 'node:fs';
 
-const TEST_DB = '/tmp/test_office.db';
-if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+// DB test lewat driver yang sama dengan produksi: libSQL `file:` (bukan node:sqlite),
+// jadi yang teruji adalah kode yang benar-benar jalan — bukan jalur kedua yang bisa basi.
+const TEST_DB = process.env.OFFICE_TEST_DB || '/tmp/office-e2e-test.db';
+for (const suffix of ['', '-wal', '-shm']) {
+  if (fs.existsSync(TEST_DB + suffix)) fs.unlinkSync(TEST_DB + suffix);
+}
 
 const PORT = 4318;
 const { server, db, hub } = createOfficeServer({ dbPath: TEST_DB });
+// Schema + backfill selesai sebelum port buka (kontrak yang sama dengan index.js).
 
 server.listen(PORT, '127.0.0.1', async () => {
+  await db.ready();
   console.log(`🧪 [TEST E2E] Test server aktif di port ${PORT}`);
 
   try {
@@ -50,7 +56,7 @@ server.listen(PORT, '127.0.0.1', async () => {
 
     // 3. Verifikasi SQLite
     await sleep(200);
-    const session = db.getSession('sesi_test_001');
+    const session = await db.getSession('sesi_test_001');
     if (!session || session.name !== 'Budi Santoso') {
       throw new Error(`Gagal verifikasi SQLite: ${JSON.stringify(session)}`);
     }
@@ -106,7 +112,7 @@ server.listen(PORT, '127.0.0.1', async () => {
     await postEvent(PORT, { type: 'tool.call', payload: { call_id: 'tc_redacted', session_id: 'sesi_test_001', tool_name: 'bash', input: { command: 'cat .env', _omitted: ['content'] } } });
     await postEvent(PORT, { type: 'tool.result', payload: { call_id: 'tc_redacted', session_id: 'sesi_test_001', tool_name: 'bash', output_chars: 4096, is_error: false, duration_ms: 5 } });
     await sleep(200);
-    const redactedTc = db.getRecentToolCalls(10).find((x) => x.id === 'tc_redacted');
+    const redactedTc = (await db.getRecentToolCalls(10)).find((x) => x.id === 'tc_redacted');
     if (!redactedTc?.result_json || !redactedTc.result_json.includes('redacted')) {
       throw new Error(`tool.result terredaksi tidak ditandai selesai: ${JSON.stringify(redactedTc)}`);
     }
@@ -183,7 +189,44 @@ server.listen(PORT, '127.0.0.1', async () => {
     }
     console.log('✅ 9. dedupe_key menahan replay backfill (token tidak berlipat)');
 
-    console.log('\n🎉 [HASIL] SEMUA 10 PENGUJIAN E2E BERHASIL!');
+    // 10. Reaper tidak boleh menyentuh mesin lain. Satu kantor kini berbagi satu DB,
+    // sementara /proc/<pid> hanyalah milik mesin tempat hub berjalan.
+    if (fs.existsSync('/proc')) {
+      const GHOST_PID = 999999;   // tidak ada prosesnya, di mesin mana pun
+      const LOCAL_MACHINE = 'e2e-mesin-lokal';
+      const FOREIGN_MACHINE = 'e2e-mesin-orang-lain';
+      process.env.OFFICE_MACHINE_ID = LOCAL_MACHINE;
+
+      for (const [id, machine] of [['e2e_dead_local', LOCAL_MACHINE], ['e2e_dead_foreign', FOREIGN_MACHINE]]) {
+        await db.upsertSession({
+          id, name: id, role: 'Tester', avatar: '🧪', color: '#22c55e',
+          cwd: '/tmp', model: 'test', pid: GHOST_PID, task: 'e2e reap', machine_id: machine,
+        });
+      }
+
+      const reaped = await db.reapDeadSessions();
+      const reapedIds = reaped.map((r) => r.id).sort();
+      if (!reapedIds.includes('e2e_dead_local')) {
+        throw new Error('reaper gagal membersihkan sesi proses mati milik mesin sendiri');
+      }
+      if (reapedIds.includes('e2e_dead_foreign')) {
+        throw new Error('🔴 REAPER MEMATIKAN SESI MILIK MESIN LAIN — pid mesin lain tidak ada di /proc lokal');
+      }
+      const foreign = await db.getSession('e2e_dead_foreign');
+      if (foreign?.status === 'offline') {
+        throw new Error('🔴 Sesi mesin lain ikut di-offline-kan oleh hub lokal');
+      }
+      console.log(`✅ 10. reaper terbatas ke mesin ini (${reapedIds.join(', ')}); sesi mesin lain aman`);
+
+      // Tanpa identitas mesin, reaper harus menyerah — bukan menebak.
+      delete process.env.OFFICE_MACHINE_ID;
+      process.env.OFFICE_MACHINE_ID_FILE = '/tmp/office-e2e-tidak-ada';
+      const blind = await db.reapDeadSessions();
+      if (blind.length > 0) throw new Error('reaper tetap jalan padahal identitas mesin tidak diketahui');
+      console.log('✅ 10b. tanpa machine-id reaper tidak menebak (fail-closed)');
+    }
+
+    console.log('\n🎉 [HASIL] SEMUA 11 PENGUJIAN E2E BERHASIL!');
     ws.close();
     hub.close();
     server.close(() => process.exit(0));

@@ -1,24 +1,48 @@
-// office.db → Turso (libSQL cloud). Seluruh query kini async.
-// Wrapper di bawah meniru API sync node:sqlite supaya refactor minimal.
+// Satu jalur DB: libSQL. `file:` = SQLite lokal, `libsql://`/https = Turso cloud.
+//
+// Kenapa `file:` dan bukan node:sqlite: migrasi Turso membuat seluruh query async,
+// dan `createOfficeServer({ dbPath })` (test e2e, `--db`) masih mengharapkan DB
+// terisolasi. libSQL sudah bisa keduanya lewat satu API, jadi tidak perlu dua
+// driver — satu implementasi, dan jalur yang diuji test adalah jalur yang dipakai produksi.
 
+import path from 'node:path';
 import { createClient } from '@libsql/client';
 import { resolveUsageCost, COST_RANK, RANK_COST_SOURCE } from './pricing.js';
-import { getLastPiCliPrompt, isWaitingPromptTask, projectNameFromCwd, roundCost } from '../../lib/session-utils.ts';
+import { getLastPiCliPrompt, isWaitingPromptTask, projectNameFromCwd, readLocalMachineId, roundCost } from '../../lib/session-utils.ts';
 import fs from 'node:fs';
 
 // ── Turso wrapper ──────────────────────────────────────────────────────
 // Mengeksekusi query via @libsql/client (async) sambil mempertahankan
 // pola `this.db.prepare(sql).run/get/all(args)` warisan node:sqlite.
 // Setiap method mengembalikan Promise — caller wajib `await`.
-function createTursoClient() {
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  if (!url) throw new Error('TURSO_DATABASE_URL wajib diisi di .env');
+/** Normalisasi target DB jadi URL libSQL. `office.db`/`/tmp/x.db` → `file:`. */
+export function resolveDatabaseUrl(target) {
+  const value = target || process.env.TURSO_DATABASE_URL;
+  if (!value) {
+    throw new Error(
+      'DB tidak terkonfigurasi: set TURSO_DATABASE_URL (libsql://…) di .env, ' +
+      'atau jalankan dengan target SQLite lokal lewat --db / createOfficeServer({ dbPath }).'
+    );
+  }
+  if (/^(libsql|https|wss|file):\/\//.test(value)) return value;
+  if (value === ':memory:') return value;
+  return `file:${path.resolve(value)}`;
+}
+
+function createDbClient(target) {
+  const url = resolveDatabaseUrl(target);
+  // authToken hanya untuk URL remote: libSQL menolaknya pada `file:`.
+  const authToken = url.startsWith('file:') || url === ':memory:' ? undefined : process.env.TURSO_AUTH_TOKEN;
+  if (!authToken && !url.startsWith('file:') && url !== ':memory:' && !process.env.TURSO_AUTH_TOKEN) {
+    throw new Error('TURSO_AUTH_TOKEN wajib diisi untuk database remote.');
+  }
 
   const client = createClient({ url, authToken });
 
   return {
-    /** DDL tunggal (atau multi-statement tergantung driver). */
+    url,
+
+    /** DDL tunggal. */
     exec(sql) {
       return client.execute(sql);
     },
@@ -26,6 +50,10 @@ function createTursoClient() {
     /** Batch atomik — dipakai untuk schema init. */
     batch(stmts) {
       return client.batch(stmts);
+    },
+
+    close() {
+      client.close?.();
     },
 
     /** Mirip node:sqlite prepare(). */
@@ -63,26 +91,38 @@ function createTursoClient() {
 // ── OfficeDB ──────────────────────────────────────────────────────────
 
 export class OfficeDB {
-  constructor() {
-    this.db = createTursoClient();
-    // Schema + backfill dijalankan sekali saat startup; method publik
-    // menunggu promise ini selesai sebelum query pertama.
-    this._ready = this._init();
+  constructor(dbPath = null) {
+    this.db = createDbClient(dbPath);
+    // Schema saja yang blocking. Backfill sengaja TIDAK di jalan yang sama:
+    // keduanya UPDATE baris per baris, dan pada Turso tiap statement = satu
+    // round-trip jaringan. Dulu itu membuat `listen` tertunda puluhan detik,
+    // sehingga start-dev.sh melaporkan "Hub tidak merespons" padahal hubnya sehat.
+    //
+    // Kontrak: pemanggil tidak melayani query sebelum `ready()` selesai
+    // (index.js await sebelum `listen`). Satu titik, bukan gate per-method —
+    // dulu ada `_waitReady()` dengan komentar "dipanggil di awal setiap method
+    // publik" padahal tidak pernah dipanggil; dihapus karena rasa aman palsu.
+    this._ready = this._initSchema();
+    this._backfillReady = this._ready
+      .then(() => Promise.all([this.backfillWaitingPromptTasks(), this.backfillMissingProjectNames()]))
+      .catch((err) => console.error('⚠️ [backfill] error:', err?.message || err));
   }
 
-  /** Block sampai schema siap. Dipanggil di awal setiap method publik. */
-  async _waitReady() { await this._ready; }
+  /** Selesaikan sebelum query pertama apa pun (lihat kontrak di constructor). */
+  ready() { return this._ready; }
 
-  async _init() {
-    await this._initSchema();
-    await this.backfillWaitingPromptTasks();
-    await this.backfillMissingProjectNames();
-  }
+  /** Buat test/tool yang butuh DB sudah ter-backfill; gagal sudah di-log internal. */
+  backfillReady() { return this._backfillReady; }
 
   async _initSchema() {
     // ── CREATE TABLE (batch atomik) ────────────────────────────────────
-    // Untuk Turso: PRAGMA journal_mode = WAL tidak diperlukan (managed).
+    // WAL hanya untuk `file:` (hub lokal masih melayani HTTP + WS bersamaan);
+    // Turso sudah dikelola di sisinya sendiri.
     // Schema di-batch supaya tidak ada partial state.
+    if (this.db.url.startsWith('file:')) {
+      await this.db.exec('PRAGMA journal_mode = WAL;');
+    }
+
     await this.db.batch([
       `CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -316,11 +356,22 @@ export class OfficeDB {
       .run('offline', now, id);
   }
 
+  /**
+   * Tandai offline sesi yang prosesnya terbukti mati.
+   *
+   * WAJIB dibatasi ke mesin ini. Semua laptop sekarang menulis ke Turso yang sama,
+   * sementara `/proc/<pid>` hanyalah milik mesin tempat hub berjalan — tanpa filter
+   * ini, hub di laptop A akan melihat pid sesi laptop B "tidak ada" dan mematikan
+   * sesi orang lain. Sesi mesin lain tetap dibersihkan reapAbandonedSessions lewat
+   * heartbeat, yang memang lintas mesin.
+   */
   async reapDeadSessions() {
     if (!fs.existsSync('/proc')) return [];
+    const machineId = readLocalMachineId();
+    if (!machineId) return [];   // tanpa identitas, tidak ada hak mematikan sesi siapa pun
     const rows = await this.db.prepare(
-      "SELECT id, name, pid FROM sessions WHERE status != 'offline' AND pid IS NOT NULL AND pid > 0"
-    ).all();
+      "SELECT id, name, pid FROM sessions WHERE status != 'offline' AND pid IS NOT NULL AND pid > 0 AND machine_id = ?"
+    ).all(machineId);
     const dead = rows.filter((row) => !fs.existsSync(`/proc/${row.pid}`));
     for (const row of dead) await this.endSession(row.id);
     return dead;

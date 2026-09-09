@@ -1,6 +1,6 @@
 # ☕ ORCA24 Coworking Space — Observabilitas Realtime Sesi & Tim
 
-Platform observabilitas interaktif untuk **Pi Dev CLI**. Setiap sesi Pi Dev CLI yang Anda jalankan otomatis terdaftar ke **kantor virtual** dengan **persona Indonesia**, tugas aktif, deteksi spawn **sub-agent**, telemetry tool calls (`bash`, `read`, `edit`, …), stream respons LLM realtime, dan **tagihan coffee-shop** (token & USD per pegawai & per model) — dipush realtime via **SQLite + WebSocket**.
+Platform observabilitas interaktif untuk **Pi Dev CLI**. Setiap sesi Pi Dev CLI yang Anda jalankan otomatis terdaftar ke **kantor virtual** dengan **persona Indonesia**, tugas aktif, deteksi spawn **sub-agent**, telemetry tool calls (`bash`, `read`, `edit`, …), stream respons LLM realtime, dan **tagihan coffee-shop** (token & USD per pegawai & per model) — dipush realtime via **libSQL (SQLite lokal / Turso cloud) + WebSocket**.
 
 Repo ini adalah **sumber kebenaran** untuk proyek pi-office: kode extension modular, builder global Pi extension, backend hub, dashboard 3D, dan seluruh dokumentasi.
 
@@ -16,7 +16,7 @@ Repo ini adalah **sumber kebenaran** untuk proyek pi-office: kode extension modu
 - ⚡ **Realtime tool-call feed, stream LLM, dan log terminal** via WebSocket.
 - 📊 **Billing coffee-shop** — setiap model jadi nama minuman (Claude → Cappuccino, GPT → Cold Brew); harga per 1M token & total per pegawai.
 - 🏷 **Identitas multi-mesin & Orca** — chip `🏢 device` + `🐋 Orca/workspace`, satu kantor dari banyak laptop.
-- ☁️ **Dua mode deploy** — lokal (Node + SQLite + WS di `:4317`, satu origin) atau cloud (Cloudflare Worker + Durable Object + Turso).
+- ☁️ **Dua mode deploy, satu driver** — lokal (Node + SQLite file + WS di `:4317`, satu origin) atau cloud (Cloudflare Worker + Durable Object + Turso). Keduanya libSQL: `file:` vs `libsql://`.
 - 🕹 **Kontrol Kill aman** — SIGTERM hanya dikirim ke proses yang terbukti Pi, tidak pernah ke proses lain.
 
 ## Arsitektur (ringkas)
@@ -29,10 +29,10 @@ Repo ini adalah **sumber kebenaran** untuk proyek pi-office: kode extension modu
 └──────────────────────────┬───────────────────────────────┘
                            ▼
 ┌──────────────────────────────────────────────────────────┐
-│  Hub — satu origin :4317 (Node: http + node:sqlite + ws) │
+│  Hub — satu origin :4317 (Node: http + @libsql/client + ws) │
 │  • REST : /api/health · /api/state · /api/billing ...    │
 │  • WS   : /ws broadcaster                                 │
-│  • SQLite office.db (WAL) — sessions, tool_calls, logs,   │
+│  • libSQL office.db (WAL) — sessions, tool_calls, logs,    │
 │    usage_events                                           │
 │  • Static: dashboard/dist                                 │
 └─────────────┬───────────────────────────────┬────────────┘
@@ -81,7 +81,7 @@ pi                       # sesi apa pun
 | [docs/EXTENSIONS.md](docs/EXTENSIONS.md) | **Pi extension office (global)**: cara pasang (`sync:extension`), cara kerja, redaksi, tool kustom, konfigurasi |
 | [docs/BACKEND.md](docs/BACKEND.md) | Hub: struktur file, REST API, WebSocket, event telemetry, kill safety, reaper, resolusi harga |
 | [docs/FRONTEND.md](docs/FRONTEND.md) | Dashboard Angular 19 + Three.js: struktur, data flow socket, engine 3D terpecah, menu kopi, build |
-| [docs/DATABASE.md](docs/DATABASE.md) | Skema SQLite & Turso: tabel, indeks, migrasi ringan, backfill |
+| [docs/DATABASE.md](docs/DATABASE.md) | Skema libSQL (SQLite & Turso): tabel, indeks, migrasi ringan, backfill, scope reaper |
 | [docs/ORCA.md](docs/ORCA.md) | Integrasi Orca: identitas sesi, embed dashboard, multi-mesin |
 | [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md) | Deploy Worker + Durable Object + Turso, secret, beda perilaku lokal vs cloud |
 
@@ -89,7 +89,7 @@ pi                       # sesi apa pun
 
 ```
 <repo office/>   (mis. ~/PROJECTS/office — salinan runtime di ~/.pi/office hasil clone/sync)
-├── server/                  Backend hub (Node + SQLite + WS)
+├── server/                  Backend hub (Node + libSQL + WS)
 ├── dashboard/               Frontend (Angular 19 standalone + Tailwind v4 + Three.js)
 ├── cloudflare/worker.ts     Worker cloud (DO + Turso)
 ├── extension/               SUMBER extension Pi (modular; index, client, redact, ...)
@@ -126,7 +126,7 @@ pi                       # sesi apa pun
 
 ## Lingkungan
 
-- **Node ≥ 22** (disarankan 26) karena `node:sqlite`.
+- **Node ≥ 22.18** (disarankan 24+) — `server/src/db.js` meng-import `lib/session-utils.ts` langsung, jadi butuh *type stripping* bawaan Node. Bukan lagi karena `node:sqlite` (tidak dipakai).
 - Env lengkap: [.env.example](.env.example). Field config extension: [docs/EXTENSIONS.md](docs/EXTENSIONS.md#konfigurasi-endpoint).
 - Secret & runtime (`config.json`, `orca.json`, `cloud.env`, `machine-id`, `*.db`, `*.log`, `dashboard/dist`) berada di `.gitignore` — repo aman untuk remote.
 

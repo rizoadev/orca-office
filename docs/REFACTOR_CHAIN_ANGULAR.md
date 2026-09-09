@@ -10,7 +10,7 @@
 
 | Lapisan | Stack sekarang | File kunci |
 |---|---|---|
-| **Backend lokal** | Node ESM + `node:sqlite` + `ws` | `server/src/{index,server,ws,db,pricing*,}.js` |
+| **Backend lokal** | Node ESM + `@libsql/client` (`file:`) + `ws` | `server/src/{index,server,ws,db,pricing*,}.js` |
 | **Backend cloud** | Cloudflare Worker + Durable Object + Turso (libSQL) | `cloudflare/worker.ts` (717 L) |
 | **Dashboard** | React 19 + Vite + Three.js | `dashboard/src/**` (12.294 LOC total repo) |
 | **Extension Pi** | TypeScript modular → di-bundle ke global | `extension/*.ts` + `extensions-global/pi-office.ts` |

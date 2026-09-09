@@ -4,7 +4,7 @@
 
 | Perangkat | Versi | Catatan |
 |---|---|---|
-| Node.js | **22+** (disarankan 26, diuji di 26.x) | `node:sqlite` butuh ≥ 22.5 |
+| Node.js | **22.18+** (disarankan 24+, diuji di 24.x) | `db.js` meng-import `lib/session-utils.ts` → butuh *type stripping* (default mulai 23.6; di 22.x perlu `--experimental-strip-types`). `node:sqlite` sudah tidak dipakai |
 | npm | 10+ | ikut Node |
 | Git | tersedia | untuk repo |
 | curl | tersedia | health check `start-dev.sh` |

@@ -2,14 +2,19 @@
 
 ## Mesin penyimpanan
 
-Dua backend, skema sama:
+Satu mesin penyimpanan, dua target — skemanya identik:
 
-| Mode | Mesin | File |
+| Mode | Target URL | Driver |
 |---|---|---|
-| Lokal (hub Node) | `node:sqlite` (`DatabaseSync`) — bawaan Node 22+, tanpa dependency | `office.db` (+ WAL/SHM) |
-| Cloud (Worker) | Turso / libSQL via `@libsql/client/web` | dibuat lewat `turso db create` |
+| Lokal (hub Node) | `file:office.db` (+ WAL/SHM) | `@libsql/client` |
+| Cloud (Worker) | `libsql://<db>.turso.io` | `@libsql/client/web` |
+| Test e2e | `file:/tmp/office-e2e-test.db` | `@libsql/client` |
 
-Lokal memakai `PRAGMA journal_mode = WAL` — pembacaan dashboard tidak pernah mengunci tulisan telemetry.
+`resolveDatabaseUrl()` (di `server/src/db.js`) memilih: arg `dbPath` > `TURSO_DATABASE_URL` > lempar error. Path tanpa scheme dinormalisasi jadi `file:`. `TURSO_AUTH_TOKEN` hanya dikirim untuk target remote — libSQL menolaknya pada `file:`.
+
+Kenapa satu driver: dulu hub lokal memakai `node:sqlite` dan cloud memakai libSQL, sehingga **jalur yang diuji test bukan jalur yang dipakai produksi** (migration ke Turso membuat `createOfficeServer({dbPath})` dan `npm test` mati diam-diam). Sekarang `file:` memberi SQLite lokal betulan lewat API async yang sama.
+
+Lokal memakai `PRAGMA journal_mode = WAL` — pembacaan dashboard tidak pernah mengunci tulisan telemetry. Untuk Turso tidak diperlukan (dikelola di sisinya).
 
 ## Tabel
 

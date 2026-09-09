@@ -116,21 +116,21 @@ Event keluar (broadcast ke semua client):
 | `log_appended` | `log.append` | LogEntry object |
 | `task_updated` | `task.update` | Session object |
 
-### 2.4 State Kode: Committed vs Working Tree
+### 2.4 Model Penyimpanan: Satu Driver, Dua Target
 
-| State | DB Driver | db.js | server.js |
-|-------|-----------|-------|-----------|
-| **HEAD (komit)** | `node:sqlite` `DatabaseSync` (sync) | 747 baris, sync | 332 baris, sync |
-| **Working tree** | `@libsql/client` (Turso/cloud, async) | 850+ baris, async + wrapper | `await` pada semua panggilan db |
+| Target | URL | Dipakai oleh |
+|--------|-----|--------------|
+| SQLite lokal | `file:office.db` | hub dev, `createOfficeServer({ dbPath })`, test e2e |
+| Turso cloud | `libsql://<db>.turso.io` | hub produksi + `cloudflare/worker.ts` |
 
-Working tree saat ini (`server/src/db.js` + `server/src/server.js`) mengandung **Turso migration** oleh sesi Pi lain:
-- `createTursoClient()` wrapper meniru API `node:sqlite` (`prepare().run/get/all()`) di atas `@libsql/client`.
-- Semua method `OfficeDB` diubah menjadi `async`.
-- `server.js` menambahkan `await` pada `/api/state`, `/api/billing`, `/api/billing/quote`, `killSession`, `getFullState`, `getBilling`.
+`node:sqlite` sudah tidak dipakai sama sekali. Semua method `OfficeDB` async, dan `server.js`
+meng-`await` di setiap jalur (`/api/state`, `/api/billing`, `killSession`, `/api/event`).
 
-Ini adalah jembatan menuju deployment edge (Cloudflare Worker + Durable Object).  
-Hub yang berjalan di `:4317` saat ini masih menggunakan kode **committed** (node:sqlite).  
-Perubahan working tree akan aktif setelah restart hub.
+Wrapper di `db.js` sengaja menahan pola warisan `prepare().run/get/all()` supaya migrasi tidak
+mengubah 20 pemanggil sekaligus. Kontrak startup: **`await db.ready()` sebelum query pertama** —
+`index.js` melakukannya sebelum `listen`, `test-e2e.js` juga. Tidak ada gate per-method; dulu ada
+`_waitReady()` dengan komentar "dipanggil di awal setiap method publik" padahal tidak pernah
+dipanggil, dan itu dihapus karena memberi rasa aman palsu.
 
 ### 2.5 Keamanan & Session Lifecycle
 
@@ -248,23 +248,29 @@ Sub-agent: sessions.parent_session_id → sessions.id (ref ke sesi induk)
 - `cost_source` di `usage_events`: `table` (tertinggi otoritas) → `feed` → `reported` → `none`.
 - `cost_rank` numerik menggantikan `MAX(cost_source)` agar agregasi jujur.
 
-### 3.6 Turso Migration (Working Tree)
-
-Working tree saat ini (`server/src/db.js`) berisi wrapper `@libsql/client` yang meniru API `node:sqlite`:
+### 3.6 Resolver DB & Auth (db.js)
 
 ```js
-function createTursoClient() {
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
+function resolveDatabaseUrl(target) {          // dbPath > TURSO_DATABASE_URL > error
+  const value = target || process.env.TURSO_DATABASE_URL;
+  return /^(libsql|https|wss|file):\/\//.test(value) ? value : `file:${path.resolve(value)}`;
+}
+
+function createDbClient(target) {
+  const url = resolveDatabaseUrl(target);
+  // authToken HANYA untuk remote: libSQL menolak token pada URL `file:`.
+  const authToken = url.startsWith('file:') ? undefined : process.env.TURSO_AUTH_TOKEN;
   // ...
   return {
     exec(sql) { return client.execute(sql); },
     batch(stmts) { return client.batch(stmts); },
     prepare(sql) {
+      // Normalize: no args → raw SQL; satu object non-array → named params ($id);
+      // sisanya → positional. Lalu petakan bentuk hasil ke pola node:sqlite.
       return {
-        run(...args) { return client.execute(sql, args); },
-        get(...args) { return client.execute(sql, args).rows[0]; },
-        all(...args) { return client.execute(sql, args).rows; },
+        run: wrap((r) => ({ changes: r.rowsAffected, lastInsertRowid: Number(r.lastInsertRowid) || 0 })),
+        get: wrap((r) => r.rows[0] || undefined),
+        all: wrap((r) => r.rows),
       };
     },
   };

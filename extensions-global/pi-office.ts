@@ -201,6 +201,33 @@ function projectNameFromCwd(cwd: string): string | null {
   return name || null;
 }
 
+// ── Machine identity ───────────────────────────────────────────────────
+
+/** Path file machine-id, sama dengan yang ditulis extension. */
+function officeMachineIdFile(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  return process.env.OFFICE_MACHINE_ID_FILE || path.join(home, '.pi', 'office', 'machine-id');
+}
+
+/**
+ * Machine-id milik mesin ini, read-only (tidak membuat file).
+ *
+ * Dibutuhkan hub supaya reaper bisa membedakan "proses ini sudah mati" dari
+ * "pid ini milik mesin lain". Setelah kantor memakai satu Turso bersama, semua
+ * sesi hidup di tabel yang sama, sementara `/proc/<pid>` hanya berlaku untuk
+ * mesin tempat hub berjalan.
+ */
+function readLocalMachineId(): string | null {
+  const explicit = (process.env.OFFICE_MACHINE_ID || '').trim();
+  if (explicit) return explicit;
+  try {
+    const value = fs.readFileSync(officeMachineIdFile(), 'utf8').trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Formatting helpers ─────────────────────────────────────────────────
 
 /** Bulatkan biaya ke 8 desimal — cukup untuk USD fraksional, hindari float noise. */
@@ -509,10 +536,10 @@ function clean(value: unknown, maxLength = 120): string | undefined {
   return normalized ? normalized.slice(0, maxLength) : undefined;
 }
 
-function machineIdFile(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  return process.env.OFFICE_MACHINE_ID_FILE || path.join(home, '.pi', 'office', 'machine-id');
-}
+// Path file-nya satu sumber dengan hub (lib/session-utils.ts): hub membaca file yang sama
+// untuk membatasi reaper, jadi kalau dua-duanya punya definisi sendiri, suatu hari cukup
+// satu perubahan nama file untuk membuat reaper salah melihat sesi.
+const machineIdFile = officeMachineIdFile;
 
 function fallbackMachineId(): string {
   const raw = `${os.hostname()}|${os.platform()}|${os.arch()}`;

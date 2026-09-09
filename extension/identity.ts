@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readOfficeExtensionConfig } from './config.ts';
+import { officeMachineIdFile } from '../lib/session-utils.ts';
 
 export type OfficeClientKind = 'pi' | 'orca' | 'subagent';
 
@@ -23,10 +24,10 @@ function clean(value: unknown, maxLength = 120): string | undefined {
   return normalized ? normalized.slice(0, maxLength) : undefined;
 }
 
-function machineIdFile(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  return process.env.OFFICE_MACHINE_ID_FILE || path.join(home, '.pi', 'office', 'machine-id');
-}
+// Path file-nya satu sumber dengan hub (lib/session-utils.ts): hub membaca file yang sama
+// untuk membatasi reaper, jadi kalau dua-duanya punya definisi sendiri, suatu hari cukup
+// satu perubahan nama file untuk membuat reaper salah melihat sesi.
+const machineIdFile = officeMachineIdFile;
 
 function fallbackMachineId(): string {
   const raw = `${os.hostname()}|${os.platform()}|${os.arch()}`;

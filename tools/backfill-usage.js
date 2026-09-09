@@ -13,7 +13,7 @@ import { OfficeDB } from '../server/src/db.js';
 import { getSessionLogFiles } from '../lib/session-utils.ts';
 
 const db = new OfficeDB();
-await db._ready;
+await db.ready();
 
 const only = process.argv[2] || null;
 

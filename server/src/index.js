@@ -6,7 +6,7 @@ const REAP_INTERVAL_MS = 60_000;
 const ABANDONED_AFTER_MS = 6 * 60 * 60 * 1000;
 
 const { server, db, hub } = await createOfficeServer();
-await db._ready;
+await db.ready();
 
 async function reap() {
   try {
@@ -25,7 +25,7 @@ async function reap() {
 server.listen(PORT, HOST, () => {
   console.log(`☕ [ORCA24 Hub] Berjalan di http://${HOST}:${PORT}`);
   console.log(`📡 [WebSocket] ws://${HOST}:${PORT}/ws`);
-  console.log(`🗄️ [Turso] ${process.env.TURSO_DATABASE_URL}`);
+  console.log(`🗄️ [DB] ${db.db.url.startsWith('file:') ? 'SQLite lokal ' + db.db.url.slice(5) : 'Turso ' + db.db.url}`);
   console.log(`🖼️ [Dashboard] disajikan dari ${DASHBOARD_DIST}`);
   // Fire-and-forget startup tasks; errors logged, not fatal.
   db.reapAbandonedSessions(ABANDONED_AFTER_MS)
@@ -48,6 +48,7 @@ process.on('unhandledRejection', (err) => {
 process.on('SIGINT', () => {
   console.log('\n🛑 Menutup ORCA24 Hub...');
   hub.close();
+  db.db.close();
   server.close(() => {
     process.exit(0);
   });

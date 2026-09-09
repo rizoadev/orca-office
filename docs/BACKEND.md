@@ -1,6 +1,6 @@
 # Backend — ORCA24 Hub (server/)
 
-Node.js murni tanpa framework HTTP: `node:http` + `node:sqlite` (bawaan Node) + `ws`. Satu proses, satu port (`4317`), satu origin untuk semua: REST API, WebSocket, dan dashboard hasil build.
+Node.js murni tanpa framework HTTP: `node:http` + `@libsql/client` (`file:` untuk SQLite lokal, `libsql://` untuk Turso) + `ws`. Satu proses, satu port (`4317`), satu origin untuk semua: REST API, WebSocket, dan dashboard hasil build.
 
 ## Struktur file
 
@@ -8,7 +8,7 @@ Node.js murni tanpa framework HTTP: `node:http` + `node:sqlite` (bawaan Node) + 
 server/src/
 ├── index.js            # Bootstrap: listen, reaper sesi mati, SIGINT handler
 ├── server.js           # HTTP router: REST API + static file server dashboard
-├── db.js               # OfficeDB: skema SQLite, upsert session, billing, reaper query
+├── db.js               # OfficeDB: skema libSQL, upsert session, billing, reaper (per-mesin)
 ├── ws.js               # OfficeWebSocketHub: broadcaster /ws + ping/pong 30 dtk
 ├── pricing.js          # Tabel harga lokal (pricing.json) + resolusi cost berjenjang
 ├── pricing-remote.js   # Feed harga bulk dari llm-prices.com (cache 24 jam)
@@ -30,7 +30,9 @@ Variabel environment server:
 |---|---|---|
 | `OFFICE_PORT` | `4317` | Port listen |
 | `OFFICE_HOST` | `0.0.0.0` | Bind address (`127.0.0.1` = lokal saja) |
-| `OFFICE_DB_PATH` | `<cwd>/office.db` | Lokasi file SQLite |
+| `TURSO_DATABASE_URL` | — | Target libSQL: `libsql://…` (cloud) atau `file:…`/path lokal |
+| `TURSO_AUTH_TOKEN` | — | Wajib untuk target remote; diabaikan pada `file:` |
+| `OFFICE_MACHINE_ID` | `~/.pi/office/machine-id` | Identitas mesin hub — menentukan sesi siapa yang boleh di-reap |
 | `OFFICE_DASHBOARD_DIST` | `../dashboard/dist` | Folder static dashboard |
 | `OFFICE_PRICING_PATH` | `<cwd>/pricing.json` | Tabel harga lokal operator |
 | `OFFICE_PRICING_FEED_URL` | `https://www.llm-prices.com/current-v1.json` | Feed harga bulk |
@@ -100,7 +102,9 @@ Cloudflare Worker tidak bisa SIGTERM (proses ada di mesin lain) — di sana kill
 Di `index.js`, tiap 60 detik:
 
 - `reapDeadSessions()` — sesi yang punya `pid` tercatat tapi `/proc/<pid>` sudah tidak ada → offline. Sesi yang di-SIGKILL tidak akan pernah kirim `session.end`, inilah penangkalnya.
-- Saat startup: `reapAbandonedSessions(6 jam)` — baris tanpa pid yang lebih tua dari 6 jam → offline.
+
+  **Dibatasi ke mesin ini saja** (`AND machine_id = ?`, dari `readLocalMachineId()`). Semua laptop kini berbagi satu Turso, sementara `/proc/<pid>` hanyalah milik mesin tempat hub berjalan: tanpa filter, hub di laptop A melihat pid sesi laptop B "tidak ada" lalu **mematikan sesi orang lain**. Kalau identitas mesin tidak terbaca, reaper menyerah tanpa menebak (fail-closed) — sesi asing tetap dibereskana `reapAbandonedSessions` lewat heartbeat, yang memang lintas mesin. Terjaga test e2e no. 10/10b.
+- Saat startup: `reapAbandonedSessions(6 jam)` — baris tanpa pid yang lebih tua dari 6 jam → offline. Ini jalur lintas mesin: `last_heartbeat` ditulis ulang oleh extension di mesin asalnya sendiri.
 
 Keduanya sengaja konservatif: tanpa bukti proses mati, kursi tidak digusur (sesi idle yang masih hidup tidak boleh salah dipindah).
 
